@@ -17,13 +17,17 @@ More information about [RadeonOpenCompute (ROCm)][rocm]
 * This is an early prototype **not meant for production deployment**.  This is **pre-alpha**.
 * This plugin currently support device plugin API v1alpha only.  This means it will only work with k8s v1.8-v1.9.\* because k8s v1.10+ have switched to v1beta1.
 
+## Deployment
+The device plugin needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernete [DaemonSet][ds], which run a copy of a pod on all (or some) Nodes in the cluster.  We have a pre-built Docker image on [DockerHub][dhk8samdgpudp] that you can use for with your DaemonSet.  This repository also have a pre-defined yaml file named `k8s-ds-amdgpu-dp.yaml`.  You can create a DaemonSet in your Kubernetes cluster by running this command:
+```
+$ kubectl create -f k8s-ds-amdgpu-dp.yaml
+```
+
 ## Notes
 * This plugin uses [`go dep`][gd] for dependencies management
-
+* Please consult the `Dockerfile` on how to build and use this plugin independent of a docker image
 
 ## TODOs
-* Add `Dockerfile` to generate a canonical Docker image for plugin deployment
-* Add deployment example with [DaemonSet][ds]
 * Add pod usage example
 * Update plugin to support [device plugin][dp] API v1beta1
 * Update ROCm documentation for kernel only install
@@ -41,3 +45,4 @@ More information about [RadeonOpenCompute (ROCm)][rocm]
 [kubeadm]: https://kubernetes.io/docs/setup/independent/install-kubeadm/#before-you-begin
 [k8sinstall]: https://kubernetes.io/docs/setup/independent/install-kubeadm
 [k8s]: https://kubernetes.io
+[dhk8samdgpudp]: https://hub.docker.com/r/rocm/k8s-device-plugin/

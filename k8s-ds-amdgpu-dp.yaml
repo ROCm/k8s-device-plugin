@@ -1,0 +1,37 @@
+# TODO device plugin currently check for existance of /dev/kfd naively
+# before loading.  Might need to find better alternatives
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: amdgpu-device-plugin-daemonset
+  namespace: kube-system
+spec:
+  template:
+    metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
+      labels:
+        name: amdgpu-dp-ds
+    spec:
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      containers:
+      - image: rocm/k8s-device-plugin
+        name: amdgpu-dp-cntr
+        securityContext:
+          allowPrivilegeEscalation: true # TODO: see if this can be made unnecessary
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: dp
+            mountPath: /var/lib/kubelet/device-plugins
+          - name: dev
+            mountPath: /dev
+      volumes:
+        - name: dp
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: dev # TODO: see if this can be made unnecessary
+          hostPath:
+            path: /dev
