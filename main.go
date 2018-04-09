@@ -27,8 +27,7 @@ import (
 )
 
 const (
-	sysfsDrm = "/sys/class/drm/"
-	devID    = "0x1002"
+	devID = "0x1002"
 )
 
 type Plugin struct{}
@@ -65,12 +64,17 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	var response pluginapi.AllocateResponse
 
-	// There are only 1 /dev/kfd per nodes regardless of the # of GPU available
+	// Currently, there are only 1 /dev/kfd per nodes regardless of the # of GPU available
 	dev := new(pluginapi.DeviceSpec)
 	dev.HostPath = "/dev/kfd"
 	dev.ContainerPath = "/dev/kfd"
 	dev.Permissions = "rw"
+	response.Devices = append(response.Devices, dev)
 
+	dev = new(pluginapi.DeviceSpec)
+	dev.HostPath = "/dev/dri"
+	dev.ContainerPath = "/dev/dri"
+	dev.Permissions = "rw"
 	response.Devices = append(response.Devices, dev)
 
 	return &response, nil
@@ -112,8 +116,8 @@ func main() {
 	manager := dpm.NewManager(&l)
 
 	go func() {
-		// TODO implement a more sophisticated node/host readiness check (i.e. installed driver, etc.)
-		var path = "/dev/kfd"
+		// /sys/class/kfd only exists if ROCm kernel/driver is installed
+		var path = "/sys/class/kfd"
 		if _, err := os.Stat(path); err == nil {
 			l.ResUpdateChan <- []string{"gpu"}
 		}
