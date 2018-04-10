@@ -31,7 +31,6 @@ $ kubectl create -f k8s-ds-amdgpu-dp.yaml
 * Add pod usage example
 * Update plugin to support [device plugin][dp] API v1beta1
 * Update ROCm documentation for kernel only install
-* Support multiple AMD GPU registration per node
 * Add proper GPU health check
 
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/

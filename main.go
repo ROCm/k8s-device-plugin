@@ -16,11 +16,14 @@
 package main
 
 import (
+	"bufio"
 	"flag"
-	//"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 
-	//"github.com/golang/glog"
+	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1alpha"
@@ -40,16 +43,51 @@ func (p *Plugin) Stop() error {
 	return nil
 }
 
+var topoSIMDre = regexp.MustCompile(`simd_count\s(\d+)`)
+
+func countGPUDev(topoRootParam ...string) int {
+	topoRoot := "/sys/class/kfd/kfd"
+	if len(topoRootParam) == 1 {
+		topoRoot = topoRootParam[0]
+	}
+
+	count := 0
+	if nodeFiles, err := filepath.Glob(topoRoot + "/topology/nodes/*/properties"); err == nil {
+		for _, nodeFile := range nodeFiles {
+			glog.Info("Parsing " + nodeFile)
+			f, e := os.Open(nodeFile)
+			if e == nil {
+				scanner := bufio.NewScanner(f)
+				for scanner.Scan() {
+					m := topoSIMDre.FindStringSubmatch(scanner.Text())
+					if m != nil {
+						if v, _ := strconv.Atoi(m[1]); v > 0 {
+							count++
+							break
+						}
+					}
+				}
+			}
+			f.Close()
+		}
+	} else {
+		glog.Fatalf("glob error: %s", err)
+	}
+	return count
+}
+
 // Monitors available amdgpu devices and notifies Kubernetes
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	devs := make([]*pluginapi.Device, 0)
 
-	// TODO implement a more sophisticated ways to find the number of GPU available
-	// TODO register multiple GPUs per node if available
-	devs = append(devs, &pluginapi.Device{
-		ID:     "gpu",
-		Health: pluginapi.Healthy,
-	})
+	devCount := countGPUDev()
+
+	for i := 0; i < devCount; i++ {
+		devs = append(devs, &pluginapi.Device{
+			ID:     "gpu",
+			Health: pluginapi.Healthy,
+		})
+	}
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
 	for {
