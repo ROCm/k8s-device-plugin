@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: alexnet-tf-cpu-pod
+  labels:
+    purpose: demo-tf-amdgpu
+spec:
+  containers:
+    - name: alexnet-tf-cpu-container
+      image: rocm/tensorflow:rocm1.7.1
+      workingDir: /root
+      env:
+      - name: HIP_VISIBLE_DEVICES
+        value: "-1" # 0 for running on GPU, -1 for running on CPU
+      command: ["/bin/bash", "-c", "--"]
+      args: ["python convnet-benchmarks/tensorflow/benchmark_alexnet.py; trap : TERM INT; sleep infinity & wait"]

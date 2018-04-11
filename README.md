@@ -23,12 +23,29 @@ The device plugin needs to be run on all the nodes that are equipped with AMD GP
 $ kubectl create -f k8s-ds-amdgpu-dp.yaml
 ```
 
+## Example workload
+You can restrict work to a node with GPU by adding `resources.limits` to the pod definition.  An example pod definition is provided in `k8s-pod-example-gpu.yaml`.  This pod runs the timing benchmark for AlexNet on AMD GPU and then go to sleep. You can create the pod by running:
+```
+$ kubectl create -f k8s-pod-example-gpu.yaml
+```
+and then check the pod status by running
+```
+$ kubectl describe pods
+```
+
+After the pod is created and running, you can see the benchmark result by running:
+```
+$ kubectl logs alexnet-tf-gpu-pod alexnet-tf-gpu-container
+```
+
+For comparison, an example pod definition of running the same benchmark with CPU is provided in `k8s-pod-example-cpu.yaml`.
+
+
 ## Notes
 * This plugin uses [`go dep`][gd] for dependencies management
 * Please consult the `Dockerfile` on how to build and use this plugin independent of a docker image
 
 ## TODOs
-* Add pod usage example
 * Update plugin to support [device plugin][dp] API v1beta1
 * Update ROCm documentation for kernel only install
 * Add proper GPU health check
