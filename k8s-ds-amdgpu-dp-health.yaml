@@ -1,3 +1,9 @@
+# TODO device plugin currently uses /dev/kfd to do health check
+# which requires privileged container
+# Might need to find better alternatives
+#
+# ***** this requires --allow-privileged=true set for both kube-apiserver and kubelet
+#
 apiVersion: extensions/v1beta1
 kind: DaemonSet
 metadata:
@@ -16,9 +22,12 @@ spec:
         operator: Exists
       containers:
       - image: rocm/k8s-device-plugin
-        name: amdgpu-dp-cntr
+        name: amdgpu-dp-cntr-health
+        workingDir: /root
+        command: ["./k8s-device-plugin"]
+        args: ["-logtostderr=true", "-stderrthreshold=INFO", "-v=5", "-pulse=2"]
         securityContext:
-          allowPrivilegeEscalation: false
+          privileged: true #Needed for /dev
           capabilities:
             drop: ["ALL"]
         volumeMounts:
@@ -26,6 +35,8 @@ spec:
             mountPath: /var/lib/kubelet/device-plugins
           - name: sys
             mountPath: /sys
+          - name: dev
+            mountPath: /dev
       volumes:
         - name: dp
           hostPath:
@@ -33,3 +44,6 @@ spec:
         - name: sys
           hostPath:
             path: /sys
+        - name: dev # Needed for health check
+          hostPath:
+            path: /dev

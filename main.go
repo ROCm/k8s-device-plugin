@@ -176,7 +176,7 @@ func (l *Lister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 
 func main() {
 	var pulse int
-	flag.IntVar(&pulse, "pulse", 2, "time between health check polling in seconds")
+	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
 
@@ -186,12 +186,15 @@ func main() {
 	}
 	manager := dpm.NewManager(&l)
 
-	go func() {
-		for {
-			time.Sleep(time.Second * time.Duration(pulse))
-			l.Heartbeat <- true
-		}
-	}()
+	if pulse > 0 {
+		go func() {
+			glog.Infof("Heart beating every %d seconds", pulse)
+			for {
+				time.Sleep(time.Second * time.Duration(pulse))
+				l.Heartbeat <- true
+			}
+		}()
+	}
 
 	go func() {
 		// /sys/class/kfd only exists if ROCm kernel/driver is installed
