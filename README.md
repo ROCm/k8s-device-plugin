@@ -11,6 +11,7 @@ More information about [RadeonOpenCompute (ROCm)][rocm]
 * [kubeadm capable machines][kubeadm] (if you are using kubeadm to deploy your k8s cluster)
 * [ROCm kernel][rock] ([Installation guide][rocminstall])
 * A [Kubernetes deployment][k8sinstall] with the `DevicePlugins` [feature gate][k8sfg] set to true
+* `--allow-privileged=true` for both kube-apiserver and kubelet (only needed if the device plugin is deployed via DaemonSet since the device plugin container requires privileged security context to access `/dev/kfd` for device health check)
 
 
 ## Limitations
@@ -48,7 +49,7 @@ For comparison, an example pod definition of running the same benchmark with CPU
 ## TODOs
 * Update plugin to support [device plugin][dp] API v1beta1
 * Update ROCm documentation for kernel only install
-* Add proper GPU health check
+* Add proper GPU health check (health check without `/dev/kfd` access.)
 
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
 [dp]: https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
