@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
@@ -33,7 +34,9 @@ const (
 	devID = "0x1002"
 )
 
-type Plugin struct{}
+type Plugin struct {
+	Heartbeat chan bool
+}
 
 func (p *Plugin) Start() error {
 	return nil
@@ -76,6 +79,16 @@ func countGPUDev(topoRootParam ...string) int {
 	return count
 }
 
+func simpleHealthCheck() bool {
+	if kfd, err := os.Open("/dev/kfd"); err != nil {
+		glog.Error("Error opening /dev/kfd")
+		return false
+	} else {
+		kfd.Close()
+	}
+	return true
+}
+
 // Monitors available amdgpu devices and notifies Kubernetes
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	devs := make([]*pluginapi.Device, 0)
@@ -92,7 +105,22 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 
 	for {
 		select {
-		//TODO implement health monitor and other control mechanisms
+		case <-p.Heartbeat:
+			var health = pluginapi.Unhealthy
+
+			// TODO there are no per device health check currently
+			// TODO all devices on a node is used together by kfd
+			if simpleHealthCheck() {
+				health = pluginapi.Healthy
+			}
+
+			for i := 0; i < devCount; i++ {
+				devs = append(devs, &pluginapi.Device{
+					ID:     "gpu",
+					Health: health,
+				})
+			}
+			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 		}
 	}
 	// returning a value with this function will unregister the plugin from k8s
@@ -120,6 +148,7 @@ func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*p
 
 type Lister struct {
 	ResUpdateChan chan dpm.PluginNameList
+	Heartbeat     chan bool
 }
 
 func (l *Lister) GetResourceNamespace() string {
@@ -140,18 +169,29 @@ func (l *Lister) Discover(pluginListCh chan dpm.PluginNameList) {
 }
 
 func (l *Lister) NewPlugin(resourceLastName string) dpm.PluginInterface {
-	return &Plugin{}
+	return &Plugin{
+		Heartbeat: l.Heartbeat,
+	}
 }
 
 func main() {
-
+	var pulse int
+	flag.IntVar(&pulse, "pulse", 2, "time between health check polling in seconds")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
 
 	l := Lister{
 		ResUpdateChan: make(chan dpm.PluginNameList),
+		Heartbeat:     make(chan bool),
 	}
 	manager := dpm.NewManager(&l)
+
+	go func() {
+		for {
+			time.Sleep(time.Second * time.Duration(pulse))
+			l.Heartbeat <- true
+		}
+	}()
 
 	go func() {
 		// /sys/class/kfd only exists if ROCm kernel/driver is installed

@@ -20,7 +20,7 @@ spec:
       - image: rocm/k8s-device-plugin
         name: amdgpu-dp-cntr
         securityContext:
-          allowPrivilegeEscalation: false
+          allowPrivilegeEscalation: true #Needed for /dev
           capabilities:
             drop: ["ALL"]
         volumeMounts:
@@ -28,6 +28,8 @@ spec:
             mountPath: /var/lib/kubelet/device-plugins
           - name: sys
             mountPath: /sys
+          - name: dev
+            mountPath: /dev
       volumes:
         - name: dp
           hostPath:
@@ -35,3 +37,6 @@ spec:
         - name: sys
           hostPath:
             path: /sys
+        - name: dev # Needed for health check
+          hostPath:
+            path: /dev
