@@ -18,6 +18,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -97,7 +98,7 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 
 	for i := 0; i < devCount; i++ {
 		devs = append(devs, &pluginapi.Device{
-			ID:     "gpu",
+			ID:     fmt.Sprintf("gpu%d", i),
 			Health: pluginapi.Healthy,
 		})
 	}
@@ -116,7 +117,7 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 
 			for i := 0; i < devCount; i++ {
 				devs = append(devs, &pluginapi.Device{
-					ID:     "gpu",
+					ID:     fmt.Sprintf("gpu%d", i),
 					Health: health,
 				})
 			}
