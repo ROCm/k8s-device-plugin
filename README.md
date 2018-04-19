@@ -57,7 +57,7 @@ For comparison, an example pod definition of running the same benchmark with CPU
 [dp]: https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
 [rocm]: https://rocm.github.io/
 [rock]: https://github.com/RadeonOpenCompute/ROCK-Kernel-Driver
-[rocminstall]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/Installation-Guide.html#
+[rocminstall]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/ROCk-kernel.html#rock-kernel
 [sysreq]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/Installation-Guide.html#system-requirement
 [gd]: https://github.com/golang/dep
 [k8sfg]: https://kubernetes.io/docs/reference/feature-gates/
