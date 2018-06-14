@@ -9,14 +9,14 @@ More information about [RadeonOpenCompute (ROCm)][rocm]
 ## Prerequisites
 * [ROCm capable machines][sysreq]
 * [kubeadm capable machines][kubeadm] (if you are using kubeadm to deploy your k8s cluster)
-* [ROCm kernel][rock] ([Installation guide][rocminstall])
+* [ROCm kernel][rock] ([Installation guide][rocminstall]) or latest AMD GPU Linux driver ([Installation guide][amdgpuinstall])
 * A [Kubernetes deployment][k8sinstall] with the `DevicePlugins` [feature gate][k8sfg] set to true
 * `--allow-privileged=true` for both kube-apiserver and kubelet (only needed if the device plugin is deployed via DaemonSet since the device plugin container requires privileged security context to access `/dev/kfd` for device health check)
 
 
 ## Limitations
-* This is an early prototype **not meant for production deployment**.  This is **pre-alpha**.
-* This plugin currently support device plugin API v1alpha only.  This means it will only work with k8s v1.8-v1.9.\* because k8s v1.10+ have switched to v1beta1.
+* This is an early prototype/alpha.
+* This plugin currently support device plugin API v1alpha only.  This means it will only work with k8s v1.9.\* because k8s v1.10+ have switched to v1beta1.
 
 ## Deployment
 The device plugin needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernete [DaemonSet][ds], which run a copy of a pod on all (or some) Nodes in the cluster.  We have a pre-built Docker image on [DockerHub][dhk8samdgpudp] that you can use for with your DaemonSet.  This repository also have a pre-defined yaml file named `k8s-ds-amdgpu-dp.yaml`.  You can create a DaemonSet in your Kubernetes cluster by running this command:
@@ -58,6 +58,7 @@ For comparison, an example pod definition of running the same benchmark with CPU
 [rocm]: https://rocm.github.io/
 [rock]: https://github.com/RadeonOpenCompute/ROCK-Kernel-Driver
 [rocminstall]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/ROCk-kernel.html#rock-kernel
+[amdgpuinstall]: https://support.amd.com/en-us/kb-articles/Pages/AMDGPU-PRO-Install.aspx
 [sysreq]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/Installation-Guide.html#system-requirement
 [gd]: https://github.com/golang/dep
 [k8sfg]: https://kubernetes.io/docs/reference/feature-gates/
