@@ -28,7 +28,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
-	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1alpha"
+	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
 )
 
 const (
@@ -90,6 +90,14 @@ func simpleHealthCheck() bool {
 	return true
 }
 
+func (p *Plugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
+	return &pluginapi.DevicePluginOptions{}, nil
+}
+
+func (p *Plugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
+	return &pluginapi.PreStartContainerResponse{}, nil
+}
+
 // Monitors available amdgpu devices and notifies Kubernetes
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	devs := make([]*pluginapi.Device, 0)
@@ -129,20 +137,23 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 }
 
 func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
-	var response pluginapi.AllocateResponse
+	car := new(pluginapi.ContainerAllocateResponse)
 
 	// Currently, there are only 1 /dev/kfd per nodes regardless of the # of GPU available
 	dev := new(pluginapi.DeviceSpec)
 	dev.HostPath = "/dev/kfd"
 	dev.ContainerPath = "/dev/kfd"
 	dev.Permissions = "rw"
-	response.Devices = append(response.Devices, dev)
+	car.Devices = append(car.Devices, dev)
 
 	dev = new(pluginapi.DeviceSpec)
 	dev.HostPath = "/dev/dri"
 	dev.ContainerPath = "/dev/dri"
 	dev.Permissions = "rw"
-	response.Devices = append(response.Devices, dev)
+	car.Devices = append(car.Devices, dev)
+
+	var response pluginapi.AllocateResponse
+	response.ContainerResponses = append(response.ContainerResponses, car)
 
 	return &response, nil
 }

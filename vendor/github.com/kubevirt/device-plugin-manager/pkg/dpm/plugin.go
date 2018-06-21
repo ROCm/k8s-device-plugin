@@ -11,7 +11,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1alpha"
+	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1beta1"
 )
 
 // PluginInterface is a mandatory interface that must be implemented by all plugins. It is

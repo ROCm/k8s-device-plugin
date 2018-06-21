@@ -40,7 +40,7 @@
   branch = "master"
   name = "github.com/kubevirt/device-plugin-manager"
   packages = ["pkg/dpm"]
-  revision = "db7069f678197bd39e81066c451e8a7cd2f54d94"
+  revision = "b70ea7a8e3a534ecb00f694e58894e1c0d3f3653"
 
 [[projects]]
   branch = "master"
@@ -121,13 +121,13 @@
 
 [[projects]]
   name = "k8s.io/kubernetes"
-  packages = ["pkg/kubelet/apis/deviceplugin/v1alpha"]
-  revision = "bee2d1505c4fe820744d26d41ecd3fdd4a3d6546"
-  version = "v1.9.4"
+  packages = ["pkg/kubelet/apis/deviceplugin/v1beta1"]
+  revision = "32ac1c9073b132b8ba18aa830f46b77dcceb0723"
+  version = "v1.10.5"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6a10be8ece44b22359e3fc28c7dc873d955c162f5e7d9a81bf86229f99a4144a"
+  inputs-digest = "f9a610daef7dc7ba77ebbccfa831da5ae442ab2815e6f66f0ec66d48c7b14497"
   solver-name = "gps-cdcl"
   solver-version = 1
