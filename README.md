@@ -27,9 +27,9 @@ $ kubectl create -f k8s-ds-amdgpu-dp.yaml
 If you want to enable the experimental device health check, please use `k8s-ds-amdgpu-dp-health.yaml` **after** `--allow-privileged=true` is set for kube-apiserver and kublet.
 
 ## Example workload
-You can restrict work to a node with GPU by adding `resources.limits` to the pod definition.  An example pod definition is provided in `k8s-pod-example-gpu.yaml`.  This pod runs the timing benchmark for AlexNet on AMD GPU and then go to sleep. You can create the pod by running:
+You can restrict work to a node with GPU by adding `resources.limits` to the pod definition.  An example pod definition is provided in `example/pod/alexnet-gpu.yaml`.  This pod runs the timing benchmark for AlexNet on AMD GPU and then go to sleep. You can create the pod by running:
 ```
-$ kubectl create -f k8s-pod-example-gpu.yaml
+$ kubectl create -f example/pod/alexnet-gpu.yaml
 ```
 and then check the pod status by running
 ```
@@ -41,7 +41,7 @@ After the pod is created and running, you can see the benchmark result by runnin
 $ kubectl logs alexnet-tf-gpu-pod alexnet-tf-gpu-container
 ```
 
-For comparison, an example pod definition of running the same benchmark with CPU is provided in `k8s-pod-example-cpu.yaml`.
+For comparison, an example pod definition of running the same benchmark with CPU is provided in `example/pod/alexnet-cpu.yaml`.
 
 
 ## Notes
