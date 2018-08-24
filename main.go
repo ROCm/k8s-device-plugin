@@ -92,15 +92,15 @@ func simpleHealthCheck() bool {
 
 // Monitors available amdgpu devices and notifies Kubernetes
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
-	devs := make([]*pluginapi.Device, 0)
-
 	devCount := countGPUDev()
 
+	devs := make([]*pluginapi.Device, devCount)
+
 	for i := 0; i < devCount; i++ {
-		devs = append(devs, &pluginapi.Device{
+		devs[i] = &pluginapi.Device{
 			ID:     fmt.Sprintf("gpu%d", i),
 			Health: pluginapi.Healthy,
-		})
+		}
 	}
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
@@ -116,10 +116,7 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 			}
 
 			for i := 0; i < devCount; i++ {
-				devs = append(devs, &pluginapi.Device{
-					ID:     fmt.Sprintf("gpu%d", i),
-					Health: health,
-				})
+				devs[i].Health = health
 			}
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 		}
