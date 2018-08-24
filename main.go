@@ -56,37 +56,45 @@ func countGPUDev(topoRootParam ...string) int {
 	}
 
 	count := 0
-	if nodeFiles, err := filepath.Glob(topoRoot + "/topology/nodes/*/properties"); err == nil {
-		for _, nodeFile := range nodeFiles {
-			glog.Info("Parsing " + nodeFile)
-			f, e := os.Open(nodeFile)
-			if e == nil {
-				scanner := bufio.NewScanner(f)
-				for scanner.Scan() {
-					m := topoSIMDre.FindStringSubmatch(scanner.Text())
-					if m != nil {
-						if v, _ := strconv.Atoi(m[1]); v > 0 {
-							count++
-							break
-						}
-					}
-				}
-			}
-			f.Close()
-		}
-	} else {
+	var nodeFiles []string
+	var err error
+	if nodeFiles, err = filepath.Glob(topoRoot + "/topology/nodes/*/properties"); err != nil {
 		glog.Fatalf("glob error: %s", err)
+		return count
+	}
+
+	for _, nodeFile := range nodeFiles {
+		glog.Info("Parsing " + nodeFile)
+		f, e := os.Open(nodeFile)
+		if e != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			m := topoSIMDre.FindStringSubmatch(scanner.Text())
+			if m == nil {
+				continue
+			}
+
+			if v, _ := strconv.Atoi(m[1]); v > 0 {
+				count++
+				break
+			}
+		}
+		f.Close()
 	}
 	return count
 }
 
 func simpleHealthCheck() bool {
-	if kfd, err := os.Open("/dev/kfd"); err != nil {
+	var kfd *os.File
+	var err error
+	if kfd, err = os.Open("/dev/kfd"); err != nil {
 		glog.Error("Error opening /dev/kfd")
 		return false
-	} else {
-		kfd.Close()
 	}
+	kfd.Close()
 	return true
 }
 
