@@ -1,0 +1,14 @@
+VCE feature version: 0, firmware version: 0x352d0400
+UVD feature version: 0, firmware version: 0x01571100
+MC feature version: 0, firmware version: 0x00000000
+ME feature version: 35, firmware version: 0x00000094
+PFP feature version: 35, firmware version: 0x000000a4
+CE feature version: 35, firmware version: 0x0000004a
+RLC feature version: 0, firmware version: 0x00000058
+MEC feature version: 33, firmware version: 0x00000160
+MEC2 feature version: 33, firmware version: 0x00000160
+SOS feature version: 0, firmware version: 0x00161a92
+ASD feature version: 0, firmware version: 0x0016129a
+SMC feature version: 0, firmware version: 0x001c2800
+SDMA0 feature version: 40, firmware version: 0x00000197
+SDMA1 feature version: 40, firmware version: 0x00000197

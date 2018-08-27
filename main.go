@@ -49,7 +49,7 @@ func (p *Plugin) Stop() error {
 
 var topoSIMDre = regexp.MustCompile(`simd_count\s(\d+)`)
 
-func countGPUDev(topoRootParam ...string) int {
+func countGPUDevFromTopology(topoRootParam ...string) int {
 	topoRoot := "/sys/class/kfd/kfd"
 	if len(topoRootParam) == 1 {
 		topoRoot = topoRootParam[0]
@@ -108,7 +108,7 @@ func (p *Plugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartCon
 
 // Monitors available amdgpu devices and notifies Kubernetes
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
-	devCount := countGPUDev()
+	devCount := countGPUDevFromTopology()
 
 	devs := make([]*pluginapi.Device, devCount)
 
