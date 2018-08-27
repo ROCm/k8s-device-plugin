@@ -13,14 +13,15 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
 **/
+
 package main
 
 import (
 	"testing"
 )
 
-func TestCountGPUDev(t *testing.T) {
-	count := countGPUDev("testdata/topology-parsing")
+func TestCountGPUDevFromTopology(t *testing.T) {
+	count := countGPUDevFromTopology("testdata/topology-parsing")
 
 	expCount := 2
 	if count != expCount {
