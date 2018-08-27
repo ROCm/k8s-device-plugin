@@ -180,11 +180,22 @@ func (l *Lister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 	}
 }
 
+var gitDescribe string
+
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "AMD GPU device plugin for Kubernetes\n")
+		fmt.Fprintf(os.Stderr, "%s version %s\n", os.Args[0], gitDescribe)
+		fmt.Fprintln(os.Stderr, "Usage:")
+		flag.PrintDefaults()
+	}
 	var pulse int
 	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
+
+	glog.Infof("AMD GPU device plugin for Kubernetes")
+	glog.Infof("%s version %s\n", os.Args[0], gitDescribe)
 
 	l := Lister{
 		ResUpdateChan: make(chan dpm.PluginNameList),
