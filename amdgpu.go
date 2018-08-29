@@ -37,6 +37,7 @@ import (
 	"github.com/golang/glog"
 )
 
+// GetAMDGPUs return a map of AMD GPU on a node identified by the part of the pci address
 func GetAMDGPUs() map[string]string {
 	if _, err := os.Stat("/sys/module/amdgpu/drivers/"); err != nil {
 		glog.Warningf("amdgpu driver unavailable: %s", err)
@@ -59,6 +60,7 @@ func GetAMDGPUs() map[string]string {
 	return devices
 }
 
+// AMDGPU check if a particular card is an AMD GPU by checking the device's vendor ID
 func AMDGPU(cardName string) bool {
 	sysfsVendorPath := "/sys/class/drm/" + cardName + "/device/vendor"
 	b, err := ioutil.ReadFile(sysfsVendorPath)
@@ -105,6 +107,8 @@ func openAMDGPU(cardName string) (C.amdgpu_device_handle, error) {
 
 }
 
+// AMDGPUDevFunctional does a simple check on whether a particular GPU is working
+// by attempting to open the device
 func AMDGPUDevFunctional(cardName string) bool {
 	devHandle, err := openAMDGPU(cardName)
 	if err != nil {
@@ -116,6 +120,8 @@ func AMDGPUDevFunctional(cardName string) bool {
 	return true
 }
 
+// AMDGPUGetFirmwareVersions obtain a subset of firmware and feature version via libdrm
+// amdgpu_query_firmware_version
 func AMDGPUGetFirmwareVersions(cardName string) (map[string]uint32, map[string]uint32) {
 	devHandle, err := openAMDGPU(cardName)
 	if err != nil {

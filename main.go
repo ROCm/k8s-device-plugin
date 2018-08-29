@@ -13,6 +13,8 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
 **/
+
+// Kubernetes (k8s) device plugin to enable registration of AMD GPU to a container cluster
 package main
 
 import (
@@ -31,18 +33,24 @@ import (
 	pluginapi "k8s.io/kubernetes/pkg/kubelet/apis/deviceplugin/v1alpha"
 )
 
-const (
-	devID = "0x1002"
-)
-
+// Plugin is identical to DevicePluginServer interface of device plugin API.
 type Plugin struct {
 	Heartbeat chan bool
 }
 
+// Start is an optional interface that could be implemented by plugin.
+// If case Start is implemented, it will be executed by Manager after
+// plugin instantiation and before its registartion to kubelet. This
+// method could be used to prepare resources before they are offered
+// to Kubernetes.
 func (p *Plugin) Start() error {
 	return nil
 }
 
+// Stop is an optional interface that could be implemented by plugin.
+// If case Stop is implemented, it will be executed by Manager after the
+// plugin is unregistered from kubelet. This method could be used to tear
+// down resources.
 func (p *Plugin) Stop() error {
 	return nil
 }
@@ -98,7 +106,9 @@ func simpleHealthCheck() bool {
 	return true
 }
 
-// Monitors available amdgpu devices and notifies Kubernetes
+// ListAndWatch returns a stream of List of Devices
+// Whenever a Device state change or a Device disappears, ListAndWatch
+// returns the new list
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	devCount := countGPUDevFromTopology()
 
@@ -130,9 +140,11 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 		}
 	}
 	// returning a value with this function will unregister the plugin from k8s
-	return nil
 }
 
+// Allocate is called during container creation so that the Device
+// Plugin can run device specific operations and instruct Kubelet
+// of the steps to make the Device available in the container
 func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	var response pluginapi.AllocateResponse
 
@@ -152,16 +164,26 @@ func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*p
 	return &response, nil
 }
 
+// Lister serves as an interface between imlementation and Manager machinery. User passes
+// implementation of this interface to NewManager function. Manager will use it to obtain resource
+// namespace, monitor available resources and instantate a new plugin for them.
 type Lister struct {
 	ResUpdateChan chan dpm.PluginNameList
 	Heartbeat     chan bool
 }
 
+// GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
+// resources in format "color.example.com/<color>" that would be "color.example.com".
 func (l *Lister) GetResourceNamespace() string {
 	return "amd.com"
 }
 
-// Monitors available resources
+// Discover notifies manager with a list of currently available resources in its namespace.
+// e.g. if "color.example.com/red" and "color.example.com/blue" are available in the system,
+// it would pass PluginNameList{"red", "blue"} to given channel. In case list of
+// resources is static, it would use the channel only once and then return. In case the list is
+// dynamic, it could block and pass a new list each times resources changed. If blocking is
+// used, it should check whether the channel is closed, i.e. Discover should stop.
 func (l *Lister) Discover(pluginListCh chan dpm.PluginNameList) {
 	for {
 		select {
@@ -174,6 +196,9 @@ func (l *Lister) Discover(pluginListCh chan dpm.PluginNameList) {
 	}
 }
 
+// NewPlugin instantiates a plugin implementation. It is given the last name of the resource,
+// e.g. for resource name "color.example.com/red" that would be "red". It must return valid
+// implementation of a PluginInterface.
 func (l *Lister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 	return &Plugin{
 		Heartbeat: l.Heartbeat,
