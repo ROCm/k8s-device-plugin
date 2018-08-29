@@ -28,9 +28,8 @@ func hasAMDGPU(t *testing.T) bool {
 
 	if len(devices) <= 0 {
 		return false
-	} else {
-		return true
 	}
+	return true
 }
 
 func TestAMDGPUFirmwareVersionConsistent(t *testing.T) {
@@ -48,7 +47,7 @@ func TestAMDGPUFirmwareVersionConsistent(t *testing.T) {
 			parseDebugFSFirmwareInfo("/sys/kernel/debug/dri/" + card[4:] + "/amdgpu_firmware_info")
 		featVersion, fwVersion := AMDGPUGetFirmwareVersions(card)
 
-		for k, _ := range featVersion {
+		for k := range featVersion {
 			if featVersion[k] != debugFSfeatVersion[k] {
 				t.Errorf("%s feature version not consistent: ioctl: %d, debugfs: %d",
 					k, featVersion[k], debugFSfeatVersion[k])
@@ -111,7 +110,7 @@ func TestAMDGPUDevFunctional(t *testing.T) {
 }
 
 func TestParseDebugFSFirmwareInfo(t *testing.T) {
-	exp_feat := map[string]uint32{
+	expFeat := map[string]uint32{
 		"VCE":   0,
 		"UVD":   0,
 		"MC":    0,
@@ -128,7 +127,7 @@ func TestParseDebugFSFirmwareInfo(t *testing.T) {
 		"SDMA1": 40,
 	}
 
-	exp_fw := map[string]uint32{
+	expFw := map[string]uint32{
 		"VCE":   0x352d0400,
 		"UVD":   0x01571100,
 		"MC":    0x00000000,
@@ -147,20 +146,20 @@ func TestParseDebugFSFirmwareInfo(t *testing.T) {
 
 	feat, fw := parseDebugFSFirmwareInfo("testdata/debugfs-parsing/amdgpu_firmware_info")
 
-	for k := range exp_feat {
+	for k := range expFeat {
 		val, ok := feat[k]
-		if !ok || val != exp_feat[k] {
-			t.Errorf("Error parsing feature version for %s: expect %d", k, exp_feat[k])
+		if !ok || val != expFeat[k] {
+			t.Errorf("Error parsing feature version for %s: expect %d", k, expFeat[k])
 		}
 	}
 
-	for k := range exp_fw {
+	for k := range expFw {
 		val, ok := fw[k]
-		if !ok || val != exp_fw[k] {
-			t.Errorf("Error parsing firmware version for %s: expect %#08x", k, exp_fw[k])
+		if !ok || val != expFw[k] {
+			t.Errorf("Error parsing firmware version for %s: expect %#08x", k, expFw[k])
 		}
 	}
-	if len(feat) != len(exp_feat) || len(fw) != len(exp_fw) {
+	if len(feat) != len(expFeat) || len(fw) != len(expFw) {
 		t.Errorf("Incorrect parsing of amdgpu firmware info from debugfs")
 	}
 }
