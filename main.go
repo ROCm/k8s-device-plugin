@@ -40,7 +40,7 @@ type Plugin struct {
 
 // Start is an optional interface that could be implemented by plugin.
 // If case Start is implemented, it will be executed by Manager after
-// plugin instantiation and before its registartion to kubelet. This
+// plugin instantiation and before its registration to kubelet. This
 // method could be used to prepare resources before they are offered
 // to Kubernetes.
 func (p *Plugin) Start() error {

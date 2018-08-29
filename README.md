@@ -1,4 +1,5 @@
 # AMD GPU device plugin for Kubernetes
+[![Go Report Card](https://goreportcard.com/badge/github.com/RadeonOpenCompute/k8s-device-plugin)](https://goreportcard.com/report/github.com/RadeonOpenCompute/k8s-device-plugin)
 
 ## Introduction
 This is a [Kubernetes][k8s] [device plugin][dp] implementation that enables the registration of AMD GPU in a container cluster for compute workload.  With the approrpriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU.
