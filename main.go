@@ -35,6 +35,7 @@ import (
 
 // Plugin is identical to DevicePluginServer interface of device plugin API.
 type Plugin struct {
+	AMDGPUs   map[string]map[string]int
 	Heartbeat chan bool
 }
 
@@ -110,15 +111,17 @@ func simpleHealthCheck() bool {
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // returns the new list
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
-	devCount := countGPUDevFromTopology()
+	p.AMDGPUs = GetAMDGPUs()
 
-	devs := make([]*pluginapi.Device, devCount)
+	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
 
-	for i := 0; i < devCount; i++ {
+	i := 0
+	for id := range p.AMDGPUs {
 		devs[i] = &pluginapi.Device{
-			ID:     fmt.Sprintf("gpu%d", i),
+			ID:     id,
 			Health: pluginapi.Healthy,
 		}
+		i++
 	}
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
@@ -133,7 +136,7 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 				health = pluginapi.Healthy
 			}
 
-			for i := 0; i < devCount; i++ {
+			for i := 0; i < len(p.AMDGPUs); i++ {
 				devs[i].Health = health
 			}
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
@@ -147,19 +150,28 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 // of the steps to make the Device available in the container
 func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*pluginapi.AllocateResponse, error) {
 	var response pluginapi.AllocateResponse
+	var dev *pluginapi.DeviceSpec
 
 	// Currently, there are only 1 /dev/kfd per nodes regardless of the # of GPU available
-	dev := new(pluginapi.DeviceSpec)
+	// for compute/rocm/HSA use cases
+	dev = new(pluginapi.DeviceSpec)
 	dev.HostPath = "/dev/kfd"
 	dev.ContainerPath = "/dev/kfd"
 	dev.Permissions = "rw"
 	response.Devices = append(response.Devices, dev)
 
-	dev = new(pluginapi.DeviceSpec)
-	dev.HostPath = "/dev/dri"
-	dev.ContainerPath = "/dev/dri"
-	dev.Permissions = "rw"
-	response.Devices = append(response.Devices, dev)
+	for _, id := range r.DevicesIDs {
+		glog.Infof("Allocating device ID: %s", id)
+
+		for k, v := range p.AMDGPUs[id] {
+			devpath := fmt.Sprintf("/dev/dri/%s%d", k, v)
+			dev = new(pluginapi.DeviceSpec)
+			dev.HostPath = devpath
+			dev.ContainerPath = devpath
+			dev.Permissions = "rw"
+			response.Devices = append(response.Devices, dev)
+		}
+	}
 
 	return &response, nil
 }

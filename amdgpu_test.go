@@ -17,6 +17,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,8 @@ func TestAMDGPUFirmwareVersionConsistent(t *testing.T) {
 
 	devices := GetAMDGPUs()
 
-	for pci, card := range devices {
+	for pci, dev := range devices {
+		card := fmt.Sprintf("card%d", dev["card"])
 		t.Logf("%s, %s", pci, card)
 
 		//debugfs path/interface may not be stable
@@ -103,7 +105,9 @@ func TestAMDGPUDevFunctional(t *testing.T) {
 
 	devices := GetAMDGPUs()
 
-	for _, card := range devices {
+	for _, dev := range devices {
+		card := fmt.Sprintf("card%d", dev["card"])
+
 		ret := AMDGPUDevFunctional(card)
 		t.Logf("%s functional: %t", card, ret)
 	}
