@@ -38,23 +38,29 @@ import (
 )
 
 // GetAMDGPUs return a map of AMD GPU on a node identified by the part of the pci address
-func GetAMDGPUs() map[string]string {
+func GetAMDGPUs() map[string]map[string]int {
 	if _, err := os.Stat("/sys/module/amdgpu/drivers/"); err != nil {
 		glog.Warningf("amdgpu driver unavailable: %s", err)
-		return make(map[string]string)
+		return make(map[string]map[string]int)
 	}
 
 	//ex: /sys/module/amdgpu/drivers/pci:amdgpu/0000:19:00.0
 	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
 
-	devices := make(map[string]string)
+	devices := make(map[string]map[string]int)
 
 	for _, path := range matches {
 		glog.Info(path)
-		cardPath, _ := filepath.Glob(path + "/drm/card*")
+		devPaths, _ := filepath.Glob(path + "/drm/*")
+		devices[filepath.Base(path)] = make(map[string]int)
 
-		if len(cardPath) > 0 {
-			devices[filepath.Base(path)] = filepath.Base(cardPath[0])
+		for _, devPath := range devPaths {
+			switch name := filepath.Base(devPath); {
+			case name[0:4] == "card":
+				devices[filepath.Base(path)][name[0:4]], _ = strconv.Atoi(name[4:])
+			case name[0:7] == "renderD":
+				devices[filepath.Base(path)][name[0:7]], _ = strconv.Atoi(name[7:])
+			}
 		}
 	}
 	return devices
