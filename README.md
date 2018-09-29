@@ -11,7 +11,7 @@ More information about [RadeonOpenCompute (ROCm)][rocm]
 * [ROCm capable machines][sysreq]
 * [kubeadm capable machines][kubeadm] (if you are using kubeadm to deploy your k8s cluster)
 * [ROCm kernel][rock] ([Installation guide][rocminstall]) or latest AMD GPU Linux driver ([Installation guide][amdgpuinstall])
-* A [Kubernetes deployment][k8sinstall] with the `DevicePlugins` [feature gate][k8sfg] set to true
+* A [Kubernetes deployment][k8sinstall]
 * `--allow-privileged=true` for both kube-apiserver and kubelet (only needed if the device plugin is deployed via DaemonSet since the device plugin container requires privileged security context to access `/dev/kfd` for device health check)
 
 
@@ -61,7 +61,6 @@ For comparison, an example pod definition of running the same benchmark with CPU
 [amdgpuinstall]: https://support.amd.com/en-us/kb-articles/Pages/AMDGPU-PRO-Install.aspx
 [sysreq]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/Installation-Guide.html#system-requirement
 [gd]: https://github.com/golang/dep
-[k8sfg]: https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/
 [kubeadm]: https://kubernetes.io/docs/setup/independent/install-kubeadm/#before-you-begin
 [k8sinstall]: https://kubernetes.io/docs/setup/independent/install-kubeadm
 [k8s]: https://kubernetes.io
