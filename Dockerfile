@@ -17,7 +17,7 @@ RUN mkdir -p /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
 ADD . /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
 RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/ describe --always --long --dirty)" \
-    github.com/RadeonOpenCompute/k8s-device-plugin
+    github.com/RadeonOpenCompute/k8s-device-plugin/cmd/k8s-device-plugin
 
 FROM alpine:3.7
 MAINTAINER Kenny Ho <Kenny.Ho@amd.com>

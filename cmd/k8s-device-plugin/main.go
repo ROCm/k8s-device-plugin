@@ -27,6 +27,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/RadeonOpenCompute/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
@@ -124,7 +125,7 @@ func (p *Plugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartCon
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // returns the new list
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
-	p.AMDGPUs = GetAMDGPUs()
+	p.AMDGPUs = amdgpu.GetAMDGPUs()
 
 	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
 

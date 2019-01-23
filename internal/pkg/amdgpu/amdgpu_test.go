@@ -14,12 +14,13 @@
  *  limitations under the License.
 **/
 
-package main
+package amdgpu
 
 import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -33,7 +34,7 @@ func hasAMDGPU(t *testing.T) bool {
 	return true
 }
 
-func TestAMDGPUFirmwareVersionConsistent(t *testing.T) {
+func TestFirmwareVersionConsistent(t *testing.T) {
 	if !hasAMDGPU(t) {
 		t.Skip("Skipping test, no AMD GPU found.")
 	}
@@ -47,7 +48,7 @@ func TestAMDGPUFirmwareVersionConsistent(t *testing.T) {
 		//debugfs path/interface may not be stable
 		debugFSfeatVersion, debugFSfwVersion :=
 			parseDebugFSFirmwareInfo("/sys/kernel/debug/dri/" + card[4:] + "/amdgpu_firmware_info")
-		featVersion, fwVersion := AMDGPUGetFirmwareVersions(card)
+		featVersion, fwVersion := GetFirmwareVersions(card)
 
 		for k := range featVersion {
 			if featVersion[k] != debugFSfeatVersion[k] {
@@ -98,7 +99,7 @@ func TestHasAMDGPU(t *testing.T) {
 	}
 }
 
-func TestAMDGPUDevFunctional(t *testing.T) {
+func TestDevFunctional(t *testing.T) {
 	if !hasAMDGPU(t) {
 		t.Skip("Skipping test, no AMD GPU found.")
 	}
@@ -108,11 +109,53 @@ func TestAMDGPUDevFunctional(t *testing.T) {
 	for _, dev := range devices {
 		card := fmt.Sprintf("card%d", dev["card"])
 
-		ret := AMDGPUDevFunctional(card)
+		ret := DevFunctional(card)
 		t.Logf("%s functional: %t", card, ret)
 	}
 }
 
+func TestParseTopologyProperties(t *testing.T) {
+	var v int64
+	var e error
+	var re *regexp.Regexp
+	var path string
+
+	re = regexp.MustCompile(`size_in_bytes\s(\d+)`)
+	path = "../../../testdata/topology-parsing/topology/nodes/1/mem_banks/0/properties"
+	v, _ = ParseTopologyProperties(path, re)
+	if v != 17163091968 {
+		t.Errorf("Error parsing %s for `%s`: expect %d", path, re.String(), 17163091968)
+	}
+
+	re = regexp.MustCompile(`flags\s(\d+)`)
+	path = "../../../testdata/topology-parsing/topology/nodes/1/mem_banks/0/properties"
+	v, _ = ParseTopologyProperties(path, re)
+	if v != 0 {
+		t.Errorf("Error parsing %s for `%s`: expect %d", path, re.String(), 0)
+	}
+
+	re = regexp.MustCompile(`simd_count\s(\d+)`)
+	path = "../../../testdata/topology-parsing/topology/nodes/2/properties"
+	v, _ = ParseTopologyProperties(path, re)
+	if v != 256 {
+		t.Errorf("Error parsing %s for `%s`: expect %d", path, re.String(), 256)
+	}
+
+	re = regexp.MustCompile(`simd_id_base\s(\d+)`)
+	path = "../../../testdata/topology-parsing/topology/nodes/2/properties"
+	v, _ = ParseTopologyProperties(path, re)
+	if v != 2147487744 {
+		t.Errorf("Error parsing %s for `%s`: expect %d", path, re.String(), 2147487744)
+	}
+
+	re = regexp.MustCompile(`asdf\s(\d+)`)
+	path = "../../../testdata/topology-parsing/topology/nodes/2/properties"
+	v, e = ParseTopologyProperties(path, re)
+	if e == nil {
+		t.Errorf("Error parsing %s for `%s`: expect error", path, re.String())
+	}
+
+}
 func TestParseDebugFSFirmwareInfo(t *testing.T) {
 	expFeat := map[string]uint32{
 		"VCE":   0,
@@ -148,7 +191,7 @@ func TestParseDebugFSFirmwareInfo(t *testing.T) {
 		"SDMA1": 0x00000197,
 	}
 
-	feat, fw := parseDebugFSFirmwareInfo("testdata/debugfs-parsing/amdgpu_firmware_info")
+	feat, fw := parseDebugFSFirmwareInfo("../../../testdata/debugfs-parsing/amdgpu_firmware_info")
 
 	for k := range expFeat {
 		val, ok := feat[k]

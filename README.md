@@ -50,7 +50,6 @@ For comparison, an example pod definition of running the same benchmark with CPU
 * Please consult the `Dockerfile` on how to build and use this plugin independent of a docker image
 
 ## TODOs
-* Update ROCm documentation for kernel only install
 * Add proper GPU health check (health check without `/dev/kfd` access.)
 
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/

@@ -21,7 +21,7 @@ import (
 )
 
 func TestCountGPUDevFromTopology(t *testing.T) {
-	count := countGPUDevFromTopology("testdata/topology-parsing")
+	count := countGPUDevFromTopology("../../testdata/topology-parsing")
 
 	expCount := 2
 	if count != expCount {

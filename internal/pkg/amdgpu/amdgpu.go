@@ -14,8 +14,9 @@
  *  limitations under the License.
 **/
 
-// TODO: consider separating this into its own repository/library
-package main
+// Package amdgpu is a collection of utility functions to access various properties
+// of AMD GPU via Linux kernel interfaces like sysfs and ioctl (using libdrm.)
+package amdgpu
 
 // #cgo pkg-config: libdrm libdrm_amdgpu
 // #include <stdint.h>
@@ -26,6 +27,7 @@ package main
 import "C"
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -113,9 +115,9 @@ func openAMDGPU(cardName string) (C.amdgpu_device_handle, error) {
 
 }
 
-// AMDGPUDevFunctional does a simple check on whether a particular GPU is working
+// DevFunctional does a simple check on whether a particular GPU is working
 // by attempting to open the device
-func AMDGPUDevFunctional(cardName string) bool {
+func DevFunctional(cardName string) bool {
 	devHandle, err := openAMDGPU(cardName)
 	if err != nil {
 		glog.Errorf("%s", err)
@@ -126,9 +128,9 @@ func AMDGPUDevFunctional(cardName string) bool {
 	return true
 }
 
-// AMDGPUGetFirmwareVersions obtain a subset of firmware and feature version via libdrm
+// GetFirmwareVersions obtain a subset of firmware and feature version via libdrm
 // amdgpu_query_firmware_version
-func AMDGPUGetFirmwareVersions(cardName string) (map[string]uint32, map[string]uint32) {
+func GetFirmwareVersions(cardName string) (map[string]uint32, map[string]uint32) {
 	devHandle, err := openAMDGPU(cardName)
 	if err != nil {
 		glog.Errorf("%s", err)
@@ -174,6 +176,33 @@ func AMDGPUGetFirmwareVersions(cardName string) (map[string]uint32, map[string]u
 	fwVersions["SDMA0"] = uint32(ver)
 
 	return featVersions, fwVersions
+}
+
+// ParseTopologyProperties parse for a property value in kfd topology file
+// The format is usually one entry per line <name> <value>.  Examples in
+// testdata/topology-parsing/.
+func ParseTopologyProperties(path string, re *regexp.Regexp) (int64, error) {
+	f, e := os.Open(path)
+	if e != nil {
+		return 0, e
+	}
+
+	e = errors.New("Topology property not found.  Regex: " + re.String())
+	v := int64(0)
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		m := re.FindStringSubmatch(scanner.Text())
+		if m == nil {
+			continue
+		}
+
+		e = nil
+		v, e = strconv.ParseInt(m[1], 0, 64)
+		break
+	}
+	f.Close()
+
+	return v, e
 }
 
 var fwVersionRe = regexp.MustCompile(`(\w+) feature version: (\d+), firmware version: (0x[0-9a-fA-F]+)`)
