@@ -150,7 +150,7 @@ func TestParseTopologyProperties(t *testing.T) {
 
 	re = regexp.MustCompile(`asdf\s(\d+)`)
 	path = "../../../testdata/topology-parsing/topology/nodes/2/properties"
-	v, e = ParseTopologyProperties(path, re)
+	_, e = ParseTopologyProperties(path, re)
 	if e == nil {
 		t.Errorf("Error parsing %s for `%s`: expect error", path, re.String())
 	}

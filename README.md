@@ -44,6 +44,9 @@ $ kubectl logs alexnet-tf-gpu-pod alexnet-tf-gpu-container
 
 For comparison, an example pod definition of running the same benchmark with CPU is provided in `example/pod/alexnet-cpu.yaml`.
 
+## Labelling node with additional GPU properties
+
+Please see [AMD GPU Kubernetes Node Labeller](cmd/k8s-node-labeller/README.md).
 
 ## Notes
 * This plugin uses [`go dep`][gd] for dependencies management

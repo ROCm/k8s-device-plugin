@@ -196,7 +196,6 @@ func ParseTopologyProperties(path string, re *regexp.Regexp) (int64, error) {
 			continue
 		}
 
-		e = nil
 		v, e = strconv.ParseInt(m[1], 0, 64)
 		break
 	}
