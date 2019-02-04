@@ -46,7 +46,11 @@ For comparison, an example pod definition of running the same benchmark with CPU
 
 ## Labelling node with additional GPU properties
 
-Please see [AMD GPU Kubernetes Node Labeller](cmd/k8s-node-labeller/README.md).
+Please see [AMD GPU Kubernetes Node Labeller](cmd/k8s-node-labeller/README.md) for details.  An example configuration is in [k8s-ds-amdgpu-labeller.yaml](k8s-ds-amdgpu-labeller.yaml):
+```
+$ kubectl create -f k8s-ds-amdgpu-labeller.yaml
+```
+
 
 ## Notes
 * This plugin uses [`go dep`][gd] for dependencies management

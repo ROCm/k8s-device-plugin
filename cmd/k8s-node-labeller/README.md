@@ -9,10 +9,13 @@ This tool automatically label nodes with GPU properties if a node has one or mor
 * Node Labeller needs to be run inside a Kubernetes Pod
 * The node's hostname need's to be made available inside the container in a text file with the path `/labeller/hostname`.
 * The Pod containing the Labeller needs to be deployed by a service account with sufficient API access.  This can be achieved through the use of [ClusterRole][rcr] and [ClusterRoleBinding][rcrb].
+  * apiGroups: core ("")
+  * resources: `nodes`
+  * verbs: `watch`, `get`, `list`, `update`
 
 ## Deployment
 
-The Labeller needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernete [DaemonSet][ds], which runs a copy of a pod on all (or some) Nodes in the cluster.
+The Labeller needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernete [DaemonSet][ds], which runs a copy of a pod on all (or some) Nodes in the cluster.  An example configuration is available [here](../../k8s-ds-amdgpu-labeller.yaml).
 
 The Labeller currently creates node label for the following AMD GPU properties:
 

@@ -1,0 +1,72 @@
+# This is a configuration example for the node labeller which includes
+# ClusterRole and ClusterRoleBinding definitions, as well as the 
+# DeamonSet configuration that deploys the actual node labeller
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: cr-node-labeller
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["watch", "get", "list", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: labeller
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cr-node-labeller
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
+- kind: ServiceAccount
+  name: default
+  namespace: kube-system
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: amdgpu-labeller-daemonset
+  namespace: kube-system
+spec:
+  template:
+    metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
+      labels:
+        name: amdgpu-lr-ds
+    spec:
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      containers:
+      - image: rocm/k8s-device-plugin:labeller-latest
+        name: amdgpu-lr-cntr
+        workingDir: /root
+        command: ["./k8s-node-labeller"]
+        args: ["-vram", "-cu-count", "-simd-count", "-device-id"]
+        securityContext:
+          privileged: true #Needed for /dev
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: sys
+            mountPath: /sys
+          - name: dev
+            mountPath: /dev
+          - name: etc
+            mountPath: /labeller
+      volumes:
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: etc
+          hostPath:
+            path: /etc
