@@ -173,11 +173,10 @@ func DevFunctional(cardName string) bool {
 
 // GetFirmwareVersions obtain a subset of firmware and feature version via libdrm
 // amdgpu_query_firmware_version
-func GetFirmwareVersions(cardName string) (map[string]uint32, map[string]uint32) {
+func GetFirmwareVersions(cardName string) (map[string]uint32, map[string]uint32, error) {
 	devHandle, err := openAMDGPU(cardName)
 	if err != nil {
-		glog.Errorf("%s", err)
-		return map[string]uint32{}, map[string]uint32{}
+		return map[string]uint32{}, map[string]uint32{}, err
 	}
 	defer C.amdgpu_device_deinitialize(devHandle)
 
@@ -218,7 +217,7 @@ func GetFirmwareVersions(cardName string) (map[string]uint32, map[string]uint32)
 	featVersions["SDMA0"] = uint32(feat)
 	fwVersions["SDMA0"] = uint32(ver)
 
-	return featVersions, fwVersions
+	return featVersions, fwVersions, nil
 }
 
 // ParseTopologyProperties parse for a property value in kfd topology file

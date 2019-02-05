@@ -23,6 +23,7 @@ The Labeller currently creates node label for the following AMD GPU properties:
 * VRAM Size (-vram)
 * Number of SIMD (-simd-count)
 * Number of Compute Unit (-cu-count)
+* Firmware and Feature Verions
 * GPU Family, in two letters acronym (-family)
   * SI - Southern Islands
   * CI - Sea Islands

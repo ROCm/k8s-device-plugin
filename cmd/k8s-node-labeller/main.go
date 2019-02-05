@@ -43,6 +43,34 @@ var reSimdCount = regexp.MustCompile(`simd_count\s(\d+)`)
 var reSimdPerCu = regexp.MustCompile(`simd_per_cu\s(\d+)`)
 
 var labelGenerators = map[string]func(map[string]map[string]int) map[string]string{
+	"firmware": func(gpus map[string]map[string]int) map[string]string {
+		counts := map[string]int{}
+
+		for _, v := range gpus {
+			var featVersions map[string]uint32
+			var fwVersions map[string]uint32
+
+			featVersions, fwVersions, err := amdgpu.GetFirmwareVersions(fmt.Sprintf("card%d", v["card"]))
+			if err != nil {
+				log.Error(err, "Fail to get firmware versions")
+				continue
+			}
+
+			for fw, ver := range featVersions {
+				counts[fmt.Sprintf("%s.feat.%d", fw, ver)]++
+			}
+			for fw, ver := range fwVersions {
+				counts[fmt.Sprintf("%s.fw.%d", fw, ver)]++
+			}
+		}
+
+		pfx := createLabelPrefix("firmware", true)
+		results := make(map[string]string, len(counts))
+		for k, v := range counts {
+			results[fmt.Sprintf("%s.%s", pfx, k)] = strconv.Itoa(v)
+		}
+		return results
+	},
 	"family": func(gpus map[string]map[string]int) map[string]string {
 		counts := map[string]int{}
 
