@@ -39,6 +39,49 @@ import (
 	"github.com/golang/glog"
 )
 
+// FamilyID to String convert AMDGPU_FAMILY_* into string
+// AMDGPU_FAMILY_* as defined in https://github.com/torvalds/linux/blob/master/include/uapi/drm/amdgpu_drm.h#L986
+func FamilyIDtoString(familyId uint32) (string, error) {
+	switch familyId {
+	case C.AMDGPU_FAMILY_SI:
+		return "SI", nil
+	case C.AMDGPU_FAMILY_CI:
+		return "CI", nil
+	case C.AMDGPU_FAMILY_KV:
+		return "KV", nil
+	case C.AMDGPU_FAMILY_VI:
+		return "VI", nil
+	case C.AMDGPU_FAMILY_CZ:
+		return "CZ", nil
+	case C.AMDGPU_FAMILY_AI:
+		return "AI", nil
+	case C.AMDGPU_FAMILY_RV:
+		return "RV", nil
+	default:
+		ret := ""
+		err := fmt.Errorf("Unknown Family ID: %d", familyId)
+		return ret, err
+	}
+
+}
+
+func GetCardFamilyName(cardName string) (string, error) {
+	devHandle, err := openAMDGPU(cardName)
+	if err != nil {
+		return "", err
+	}
+	defer C.amdgpu_device_deinitialize(devHandle)
+
+	var info C.struct_amdgpu_gpu_info
+	rc := C.amdgpu_query_gpu_info(devHandle, &info)
+
+	if rc < 0 {
+		return "", fmt.Errorf("Fail to get FamilyID %s: %d", cardName, rc)
+	}
+
+	return FamilyIDtoString(uint32(info.family_id))
+}
+
 // GetAMDGPUs return a map of AMD GPU on a node identified by the part of the pci address
 func GetAMDGPUs() map[string]map[string]int {
 	if _, err := os.Stat("/sys/module/amdgpu/drivers/"); err != nil {

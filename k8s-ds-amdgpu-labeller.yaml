@@ -48,7 +48,7 @@ spec:
         name: amdgpu-lr-cntr
         workingDir: /root
         command: ["./k8s-node-labeller"]
-        args: ["-vram", "-cu-count", "-simd-count", "-device-id"]
+        args: ["-vram", "-cu-count", "-simd-count", "-device-id", "-family"]
         securityContext:
           privileged: true #Needed for /dev
           capabilities:

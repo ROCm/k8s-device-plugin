@@ -20,9 +20,17 @@ The Labeller needs to be run on all the nodes that are equipped with AMD GPU.  T
 The Labeller currently creates node label for the following AMD GPU properties:
 
 * Device ID (-device-id)
-* VRAM Szie (-vram)
+* VRAM Size (-vram)
 * Number of SIMD (-simd-count)
 * Number of Compute Unit (-cu-count)
+* GPU Family, in two letters acronym (-family)
+  * SI - Southern Islands
+  * CI - Sea Islands
+  * KV - Kaveri
+  * VI - Volcanic Islands
+  * CZ - Carrizo
+  * AI - Arctic Islands
+  * RV - Raven
 
 Example result
 
@@ -31,6 +39,7 @@ Example result
     Roles:              <none>
     Labels:             beta.amd.com/gpu.cu-count.64=1
                         beta.amd.com/gpu.device-id.6860=1
+                        beta.amd.com/gpu.family.AI=1
                         beta.amd.com/gpu.simd-count.256=1
                         beta.amd.com/gpu.vram.16G=1
                         beta.kubernetes.io/arch=amd64
