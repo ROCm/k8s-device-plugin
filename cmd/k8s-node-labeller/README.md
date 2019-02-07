@@ -23,7 +23,7 @@ The Labeller currently creates node label for the following AMD GPU properties:
 * VRAM Size (-vram)
 * Number of SIMD (-simd-count)
 * Number of Compute Unit (-cu-count)
-* Firmware and Feature Verions
+* Firmware and Feature Versions (-firmware)
 * GPU Family, in two letters acronym (-family)
   * SI - Southern Islands
   * CI - Sea Islands
@@ -61,6 +61,8 @@ Once the Node Labeller is deployed and functional, you can select specific nodes
     $ kubectl get nodes -l beta.amd.com/gpu.vram.8G
 
 ## Limitations
+
+While container scheduling via label selector works for heterogeneous cluster, it requires homogenous nodes.  For example, you can have a node with just Fiji and just Vega10 in the same cluster but not a node that has both Fiji and Vg10 cards in it.
 
 ## Notes
 
