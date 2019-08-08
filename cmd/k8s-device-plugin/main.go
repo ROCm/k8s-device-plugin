@@ -24,7 +24,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/RadeonOpenCompute/k8s-device-plugin/internal/pkg/amdgpu"
@@ -36,8 +38,9 @@ import (
 
 // Plugin is identical to DevicePluginServer interface of device plugin API.
 type Plugin struct {
-	AMDGPUs   map[string]map[string]int
-	Heartbeat chan bool
+	AMDGPUs     map[string]map[string]int
+	HipOrdinals map[string]int
+	Heartbeat   chan bool
 }
 
 // Start is an optional interface that could be implemented by plugin.
@@ -127,6 +130,16 @@ func (p *Plugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartCon
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	p.AMDGPUs = amdgpu.GetAMDGPUs()
 
+	// With multiple GPUs we want to be able to select one or more, which for rocm
+	// is done with device ordinals. However, the map might not order devices
+	// in strict increasing order. There is a "cardN" entry in the AMDGPUs structure,
+	// but if the host contains cards from multiple vendors the rocm devices
+	// might not be numbered continuously from 0. The easy solution we use is to
+	// create an array of the PCI addresses, sort this, and then save a map
+	// translating the device ID to rocm ordinal.
+
+	pciAddress := make([]string, len(p.AMDGPUs))
+
 	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
 
 	i := 0
@@ -135,8 +148,17 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 			ID:     id,
 			Health: pluginapi.Healthy,
 		}
+		pciAddress[i] = id
 		i++
 	}
+
+	sort.Strings(pciAddress)
+
+	p.HipOrdinals = make(map[string]int, len(p.AMDGPUs))
+	for i := 0; i < len(pciAddress); i++ {
+		p.HipOrdinals[pciAddress[i]] = i
+	}
+
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
 	for {
@@ -168,7 +190,21 @@ func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*p
 	var dev *pluginapi.DeviceSpec
 
 	for _, req := range r.ContainerRequests {
-		car = pluginapi.ContainerAllocateResponse{}
+
+		// Translate requested IDs into the corresponding ordinals for HIP/OpenCL
+		// so we can set environment variables to specify what GPU(s) should be used
+		HipDeviceIDs := make([]string, len(req.DevicesIDs))
+		for i := 0; i < len(req.DevicesIDs); i++ {
+			HipDeviceIDs[i] = fmt.Sprintf("%d", p.HipOrdinals[req.DevicesIDs[i]])
+		}
+		sort.Strings(HipDeviceIDs)
+
+		car = pluginapi.ContainerAllocateResponse{
+			Envs: map[string]string{
+				"HIP_VISIBLE_DEVICES": strings.Join(HipDeviceIDs, ","),
+				"GPU_DEVICE_ORDINAL":  strings.Join(HipDevicesIDs, ","),
+			},
+		}
 
 		// Currently, there are only 1 /dev/kfd per nodes regardless of the # of GPU available
 		// for compute/rocm/HSA use cases
