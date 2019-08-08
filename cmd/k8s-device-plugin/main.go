@@ -202,7 +202,7 @@ func (p *Plugin) Allocate(ctx context.Context, r *pluginapi.AllocateRequest) (*p
 		car = pluginapi.ContainerAllocateResponse{
 			Envs: map[string]string{
 				"HIP_VISIBLE_DEVICES": strings.Join(HipDeviceIDs, ","),
-				"GPU_DEVICE_ORDINAL":  strings.Join(HipDevicesIDs, ","),
+				"GPU_DEVICE_ORDINAL":  strings.Join(HipDeviceIDs, ","),
 			},
 		}
 
