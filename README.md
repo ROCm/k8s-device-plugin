@@ -24,14 +24,25 @@ The device plugin needs to be run on all the nodes that are equipped with AMD GP
 ```
 $ kubectl create -f k8s-ds-amdgpu-dp.yaml
 ```
+or directly pull from the web using
+```
+kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml
+```
 
 If you want to enable the experimental device health check, please use `k8s-ds-amdgpu-dp-health.yaml` **after** `--allow-privileged=true` is set for kube-apiserver and kublet.
 
 ## Example workload
 You can restrict work to a node with GPU by adding `resources.limits` to the pod definition.  An example pod definition is provided in `example/pod/alexnet-gpu.yaml`.  This pod runs the timing benchmark for AlexNet on AMD GPU and then go to sleep. You can create the pod by running:
 ```
-$ kubectl create -f example/pod/alexnet-gpu.yaml
+$ kubectl create -f alexnet-gpu.yaml
 ```
+
+or
+
+```
+$ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/example/pod/alexnet-gpu.yaml
+```
+
 and then check the pod status by running
 ```
 $ kubectl describe pods
@@ -49,6 +60,12 @@ For comparison, an example pod definition of running the same benchmark with CPU
 Please see [AMD GPU Kubernetes Node Labeller](cmd/k8s-node-labeller/README.md) for details.  An example configuration is in [k8s-ds-amdgpu-labeller.yaml](k8s-ds-amdgpu-labeller.yaml):
 ```
 $ kubectl create -f k8s-ds-amdgpu-labeller.yaml
+```
+
+or
+
+```
+$ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml
 ```
 
 
