@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -149,19 +150,36 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 	"simd-count": func(gpus map[string]map[string]int) map[string]string {
 		counts := map[string]int{}
 
+		propertiesPath := "/sys/class/kfd/kfd/topology/nodes/*/properties"
+		var files []string
+		var err error
+
+		if files, err = filepath.Glob(propertiesPath); err != nil || len(files) == 0 {
+			log.Error(err, "Fail to glob topology properties")
+			return map[string]string{}
+		}
+
 		pfx := createLabelPrefix("simd-count", true)
 		for _, gpu := range gpus {
-			// /sys/class/kfd/kfd/topology/nodes/<card #>/properties
+			// /sys/class/kfd/kfd/topology/nodes/*/properties
 			// simd_count
-			file := fmt.Sprintf("/sys/class/kfd/kfd/topology/nodes/%d/properties", gpu["card"])
 
-			s, e := amdgpu.ParseTopologyProperties(file, reSimdCount)
-			if e != nil {
-				log.Error(e, "Error parsing simd-count")
-				continue
+			for _, file := range files {
+				render_minor, _ := amdgpu.ParseTopologyProperties(file, reDrmRenderMinor)
+
+				if int(render_minor) != gpu["renderD"] {
+					continue
+				}
+
+				s, e := amdgpu.ParseTopologyProperties(file, reSimdCount)
+				if e != nil {
+					log.Error(e, "Error parsing simd-count")
+					continue
+				}
+
+				counts[fmt.Sprintf("%d", s)]++
+				break
 			}
-
-			counts[fmt.Sprintf("%d", s)]++
 		}
 
 		results := make(map[string]string, len(counts))
@@ -173,24 +191,41 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 	"cu-count": func(gpus map[string]map[string]int) map[string]string {
 		counts := map[string]int{}
 
+		propertiesPath := "/sys/class/kfd/kfd/topology/nodes/*/properties"
+		var files []string
+		var err error
+
+		if files, err = filepath.Glob(propertiesPath); err != nil || len(files) == 0 {
+			log.Error(err, "Fail to glob topology properties")
+			return map[string]string{}
+		}
+
 		pfx := createLabelPrefix("cu-count", true)
 		for _, gpu := range gpus {
-			// /sys/class/kfd/kfd/topology/nodes/<card #>/properties
+			// /sys/class/kfd/kfd/topology/nodes/*/properties
 			// simd_count / simd_per_cu
-			file := fmt.Sprintf("/sys/class/kfd/kfd/topology/nodes/%d/properties", gpu["card"])
 
-			s, e := amdgpu.ParseTopologyProperties(file, reSimdCount)
-			if e != nil {
-				log.Error(e, "Error parsing simd-count")
-				continue
-			}
-			c, e := amdgpu.ParseTopologyProperties(file, reSimdPerCu)
-			if e != nil || c == 0 {
-				log.Error(e, fmt.Sprintf("Error parsing simd-per-cu %d", c))
-				continue
-			}
+			for _, file := range files {
+				render_minor, _ := amdgpu.ParseTopologyProperties(file, reDrmRenderMinor)
 
-			counts[fmt.Sprintf("%d", s/c)]++
+				if int(render_minor) != gpu["renderD"] {
+					continue
+				}
+
+				s, e := amdgpu.ParseTopologyProperties(file, reSimdCount)
+				if e != nil {
+					log.Error(e, "Error parsing simd-count")
+					continue
+				}
+				c, e := amdgpu.ParseTopologyProperties(file, reSimdPerCu)
+				if e != nil || c == 0 {
+					log.Error(e, fmt.Sprintf("Error parsing simd-per-cu %d", c))
+					continue
+				}
+
+				counts[fmt.Sprintf("%d", s/c)]++
+				break
+			}
 		}
 
 		results := make(map[string]string, len(counts))
