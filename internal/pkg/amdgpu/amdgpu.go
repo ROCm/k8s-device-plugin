@@ -57,6 +57,8 @@ func FamilyIDtoString(familyId uint32) (string, error) {
 		return "AI", nil
 	case C.AMDGPU_FAMILY_RV:
 		return "RV", nil
+	case C.AMDGPU_FAMILY_NV:
+		return "NV", nil
 	default:
 		ret := ""
 		err := fmt.Errorf("Unknown Family ID: %d", familyId)

@@ -17,7 +17,7 @@ More information about [RadeonOpenCompute (ROCm)][rocm]
 
 ## Limitations
 * This is an early prototype/alpha.
-* This plugin currently support device plugin API v1beta1 only.  This means it will only work with k8s v1.10+.
+* This plugin currently support device plugin API v1 only.  This means it will only work with k8s v1.16+.
 
 ## Deployment
 The device plugin needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernetes [DaemonSet][ds], which run a copy of a pod on all (or some) Nodes in the cluster.  We have a pre-built Docker image on [DockerHub][dhk8samdgpudp] that you can use for with your DaemonSet.  This repository also have a pre-defined yaml file named `k8s-ds-amdgpu-dp.yaml`.  You can create a DaemonSet in your Kubernetes cluster by running this command:

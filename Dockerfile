@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM golang:1.9.5-alpine3.7
+FROM golang:1.14.2-alpine3.11
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
 RUN mkdir -p /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
 ADD . /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
@@ -19,7 +19,7 @@ RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/ describe --always --long --dirty)" \
     github.com/RadeonOpenCompute/k8s-device-plugin/cmd/k8s-device-plugin
 
-FROM alpine:3.7
+FROM alpine:3.11
 MAINTAINER Kenny Ho <Kenny.Ho@amd.com>
 RUN apk --no-cache add ca-certificates libdrm
 WORKDIR /root/

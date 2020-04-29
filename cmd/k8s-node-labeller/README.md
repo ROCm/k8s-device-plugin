@@ -32,6 +32,7 @@ The Labeller currently creates node label for the following AMD GPU properties:
   * CZ - Carrizo
   * AI - Arctic Islands
   * RV - Raven
+  * NV - Navi
 
 Example result
 
