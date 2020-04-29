@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -41,6 +40,7 @@ func createLabelPrefix(name string, experimental bool) string {
 var reSizeInBytes = regexp.MustCompile(`size_in_bytes\s(\d+)`)
 var reSimdCount = regexp.MustCompile(`simd_count\s(\d+)`)
 var reSimdPerCu = regexp.MustCompile(`simd_per_cu\s(\d+)`)
+var reDrmRenderMinor = regexp.MustCompile(`drm_render_minor\s(\d+)`)
 
 var labelGenerators = map[string]func(map[string]map[string]int) map[string]string{
 	"firmware": func(gpus map[string]map[string]int) map[string]string {
@@ -120,20 +120,19 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 
 		pfx := createLabelPrefix("vram", true)
 		for _, gpu := range gpus {
-			// /sys/class/kfd/kfd/topology/nodes/1/mem_banks/[digit]/properties
+			// /sys/class/drm/card<card #>/device/mem_info_vram_total
 			// size_in_bytes
-			memBanksPath := fmt.Sprintf("/sys/class/kfd/kfd/topology/nodes/%d/mem_banks/*/properties", gpu["card"])
+			vramTotalPath := fmt.Sprintf("/sys/class/drm/card%d/device/mem_info_vram_total", gpu["card"])
 
-			vSize := int64(0)
-			var files []string
-			var err error
-			if files, err = filepath.Glob(memBanksPath); err != nil || len(files) == 0 {
-				log.Error(err, "Fail to glob memBanksPath")
+			b, err := ioutil.ReadFile(vramTotalPath)
+			if err != nil {
+				log.Error(err, vramTotalPath)
 				continue
 			}
-			for _, file := range files {
-				b, _ := amdgpu.ParseTopologyProperties(file, reSizeInBytes)
-				vSize += b
+			vSize, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
+			if err != nil {
+				log.Error(err, "Error parsing size")
+				continue
 			}
 
 			tmp := vSize / bytePerMB
@@ -187,7 +186,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			}
 			c, e := amdgpu.ParseTopologyProperties(file, reSimdPerCu)
 			if e != nil || c == 0 {
-				log.Error(e, "Error parsing simd-per-cu ", c)
+				log.Error(e, fmt.Sprintf("Error parsing simd-per-cu %d", c))
 				continue
 			}
 
