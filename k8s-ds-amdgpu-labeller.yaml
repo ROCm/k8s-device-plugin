@@ -27,12 +27,15 @@ subjects:
   name: default
   namespace: kube-system
 ---
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: amdgpu-labeller-daemonset
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      name: amdgpu-lr-ds
   template:
     metadata:
       annotations:

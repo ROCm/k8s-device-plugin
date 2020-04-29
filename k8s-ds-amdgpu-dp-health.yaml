@@ -4,12 +4,15 @@
 #
 # ***** this requires --allow-privileged=true set for both kube-apiserver and kubelet
 #
-apiVersion: extensions/v1beta1
+apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: amdgpu-device-plugin-daemonset
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      name: amdgpu-dp-ds
   template:
     metadata:
       annotations:
