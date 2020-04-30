@@ -49,9 +49,15 @@ spec:
       containers:
       - image: rocm/k8s-device-plugin:labeller-latest
         name: amdgpu-lr-cntr
+        imagePullPolicy: Always
         workingDir: /root
         command: ["./k8s-node-labeller"]
         args: ["-vram", "-cu-count", "-simd-count", "-device-id", "-family"]
+        env:
+          - name: DS_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
         securityContext:
           privileged: true #Needed for /dev
           capabilities:
@@ -61,8 +67,6 @@ spec:
             mountPath: /sys
           - name: dev
             mountPath: /dev
-          - name: etc
-            mountPath: /labeller
       volumes:
         - name: sys
           hostPath:
@@ -70,6 +74,3 @@ spec:
         - name: dev
           hostPath:
             path: /dev
-        - name: etc
-          hostPath:
-            path: /etc

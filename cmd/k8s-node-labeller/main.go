@@ -293,11 +293,7 @@ func main() {
 	}
 
 	// laballer only respond to event about the node it is on by matching hostname
-	b, err := ioutil.ReadFile("/labeller/hostname")
-	if err != nil {
-		entryLog.Error(err, "Cannot read hostname")
-	}
-	hostname := strings.TrimSpace(string(b))
+	hostname := os.Getenv("DS_NODE_NAME")
 
 	pred := predicate.Funcs{
 		// Create returns true if the Create event should be processed
