@@ -97,40 +97,41 @@ func (dpm *Manager) handleNewPlugins(currentPluginsMap map[string]devicePlugin, 
 	var wg sync.WaitGroup
 	var pluginMapMutex = &sync.Mutex{}
 
+	// This map is used for faster searches when removing old plugins
 	newPluginsSet := make(map[string]bool)
-	for _, newPluginLastName := range newPluginsList {
-		newPluginsSet[newPluginLastName] = true
-	}
 
 	// Add new plugins
-	for newPluginLastName, _ := range newPluginsSet {
+	for _, newPluginLastName := range newPluginsList {
+		newPluginsSet[newPluginLastName] = true
 		wg.Add(1)
-		go func() {
-			if _, ok := currentPluginsMap[newPluginLastName]; !ok {
-				glog.V(3).Infof("Adding a new plugin \"%s\"", newPluginLastName)
-				plugin := newDevicePlugin(dpm.lister.GetResourceNamespace(), newPluginLastName, dpm.lister.NewPlugin(newPluginLastName))
-				startPlugin(newPluginLastName, plugin)
+		go func(name string) {
+			if _, ok := currentPluginsMap[name]; !ok {
+				// add new plugin only if it doesn't already exist
+				glog.V(3).Infof("Adding a new plugin \"%s\"", name)
+				plugin := newDevicePlugin(dpm.lister.GetResourceNamespace(), name, dpm.lister.NewPlugin(name))
+				startPlugin(name, plugin)
 				pluginMapMutex.Lock()
-				currentPluginsMap[newPluginLastName] = plugin
+				currentPluginsMap[name] = plugin
 				pluginMapMutex.Unlock()
 			}
 			wg.Done()
-		}()
+		}(newPluginLastName)
 	}
 	wg.Wait()
 
 	// Remove old plugins
-	for pluginLastName, plugin := range currentPluginsMap {
+	for pluginLastName, currentPlugin := range currentPluginsMap {
 		wg.Add(1)
-		go func() {
-			if _, ok := newPluginsSet[pluginLastName]; !ok {
-				stopPlugin(pluginLastName, plugin)
+		go func(name string, plugin devicePlugin) {
+			if _, found := newPluginsSet[name]; !found {
+				glog.V(3).Infof("Remove unused plugin \"%s\"", name)
+				stopPlugin(name, plugin)
 				pluginMapMutex.Lock()
-				delete(currentPluginsMap, pluginLastName)
+				delete(currentPluginsMap, name)
 				pluginMapMutex.Unlock()
 			}
 			wg.Done()
-		}()
+		}(pluginLastName, currentPlugin)
 	}
 	wg.Wait()
 }
@@ -138,12 +139,12 @@ func (dpm *Manager) handleNewPlugins(currentPluginsMap map[string]devicePlugin, 
 func (dpm *Manager) startPluginServers(pluginMap map[string]devicePlugin) {
 	var wg sync.WaitGroup
 
-	for pluginLastName, plugin := range pluginMap {
+	for pluginLastName, currentPlugin := range pluginMap {
 		wg.Add(1)
-		go func() {
-			startPluginServer(pluginLastName, plugin)
+		go func(name string, plugin devicePlugin) {
+			startPluginServer(name, plugin)
 			wg.Done()
-		}()
+		}(pluginLastName, currentPlugin)
 	}
 	wg.Wait()
 }
@@ -151,12 +152,12 @@ func (dpm *Manager) startPluginServers(pluginMap map[string]devicePlugin) {
 func (dpm *Manager) stopPluginServers(pluginMap map[string]devicePlugin) {
 	var wg sync.WaitGroup
 
-	for pluginLastName, plugin := range pluginMap {
+	for pluginLastName, currentPlugin := range pluginMap {
 		wg.Add(1)
-		go func() {
-			stopPluginServer(pluginLastName, plugin)
+		go func(name string, plugin devicePlugin) {
+			stopPluginServer(name, plugin)
 			wg.Done()
-		}()
+		}(pluginLastName, currentPlugin)
 	}
 	wg.Wait()
 }
@@ -165,15 +166,15 @@ func (dpm *Manager) stopPlugins(pluginMap map[string]devicePlugin) {
 	var wg sync.WaitGroup
 	var pluginMapMutex = &sync.Mutex{}
 
-	for pluginLastName, plugin := range pluginMap {
+	for pluginLastName, currentPlugin := range pluginMap {
 		wg.Add(1)
-		go func() {
-			stopPlugin(pluginLastName, plugin)
+		go func(name string, plugin devicePlugin) {
+			stopPlugin(name, plugin)
 			pluginMapMutex.Lock()
-			delete(pluginMap, pluginLastName)
+			delete(pluginMap, name)
 			pluginMapMutex.Unlock()
 			wg.Done()
-		}()
+		}(pluginLastName, currentPlugin)
 	}
 	wg.Wait()
 }

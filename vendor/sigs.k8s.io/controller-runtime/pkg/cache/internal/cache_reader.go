@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/internal/objectutil"
 )
 
 // CacheReader is a CacheReader
@@ -87,7 +88,7 @@ func (c *CacheReader) Get(_ context.Context, key client.ObjectKey, out runtime.O
 }
 
 // List lists items out of the indexer and writes them to out
-func (c *CacheReader) List(_ context.Context, out runtime.Object, opts ...client.ListOptionFunc) error {
+func (c *CacheReader) List(_ context.Context, out runtime.Object, opts ...client.ListOption) error {
 	var objs []interface{}
 	var err error
 
@@ -96,7 +97,7 @@ func (c *CacheReader) List(_ context.Context, out runtime.Object, opts ...client
 
 	if listOpts.FieldSelector != nil {
 		// TODO(directxman12): support more complicated field selectors by
-		// combining multiple indicies, GetIndexers, etc
+		// combining multiple indices, GetIndexers, etc
 		field, val, requiresExact := requiresExactMatch(listOpts.FieldSelector)
 		if !requiresExact {
 			return fmt.Errorf("non-exact field matches are not supported by the cache")
@@ -118,33 +119,21 @@ func (c *CacheReader) List(_ context.Context, out runtime.Object, opts ...client
 		labelSel = listOpts.LabelSelector
 	}
 
-	outItems, err := c.getListItems(objs, labelSel)
-	if err != nil {
-		return err
-	}
-	return apimeta.SetList(out, outItems)
-}
-
-func (c *CacheReader) getListItems(objs []interface{}, labelSel labels.Selector) ([]runtime.Object, error) {
-	outItems := make([]runtime.Object, 0, len(objs))
+	runtimeObjs := make([]runtime.Object, 0, len(objs))
 	for _, item := range objs {
 		obj, isObj := item.(runtime.Object)
 		if !isObj {
-			return nil, fmt.Errorf("cache contained %T, which is not an Object", obj)
+			return fmt.Errorf("cache contained %T, which is not an Object", obj)
 		}
-		meta, err := apimeta.Accessor(obj)
-		if err != nil {
-			return nil, err
-		}
-		if labelSel != nil {
-			lbls := labels.Set(meta.GetLabels())
-			if !labelSel.Matches(lbls) {
-				continue
-			}
-		}
-		outItems = append(outItems, obj.DeepCopyObject())
+		outObj := obj.DeepCopyObject()
+		outObj.GetObjectKind().SetGroupVersionKind(c.groupVersionKind)
+		runtimeObjs = append(runtimeObjs, outObj)
 	}
-	return outItems, nil
+	filteredItems, err := objectutil.FilterWithLabels(runtimeObjs, labelSel)
+	if err != nil {
+		return err
+	}
+	return apimeta.SetList(out, filteredItems)
 }
 
 // objectKeyToStorageKey converts an object key to store key.

@@ -45,7 +45,7 @@ type devicePlugin struct {
 	Socket           string
 	Server           *grpc.Server
 	Running          bool
-	Starting         sync.Mutex
+	Starting         *sync.Mutex
 }
 
 func newDevicePlugin(resourceNamespace string, pluginName string, devicePluginImpl PluginInterface) devicePlugin {
@@ -54,6 +54,7 @@ func newDevicePlugin(resourceNamespace string, pluginName string, devicePluginIm
 		Socket:           pluginapi.DevicePluginPath + resourceNamespace + "_" + pluginName,
 		ResourceName:     resourceNamespace + "/" + pluginName,
 		Name:             pluginName,
+		Starting:         &sync.Mutex{},
 	}
 }
 
@@ -156,6 +157,8 @@ func (dpi *devicePlugin) register() error {
 // StopServer stops the gRPC server. Trying to stop already stopped plugin emits an info-level
 // log message.
 func (dpi *devicePlugin) StopServer() error {
+	// TODO: should this also be a critical section?
+	// how do we prevent multiple stops? or start/stop race condition?
 	glog.V(3).Infof("%s: Stopping plugin server", dpi.Name)
 
 	if !dpi.Running {
