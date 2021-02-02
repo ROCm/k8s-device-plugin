@@ -20,8 +20,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/signals"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
@@ -269,7 +269,7 @@ func main() {
 
 	flag.Parse()
 
-	logf.SetLogger(zap.Logger(false))
+	logf.SetLogger(zap.New())
 	entryLog := log.WithName("entrypoint")
 
 	// Setup a Manager
@@ -298,7 +298,7 @@ func main() {
 	pred := predicate.Funcs{
 		// Create returns true if the Create event should be processed
 		CreateFunc: func(e event.CreateEvent) bool {
-			if hostname == e.Meta.GetName() {
+			if hostname == e.Object.GetName() {
 				return true
 			}
 			return false

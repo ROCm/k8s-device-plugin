@@ -21,7 +21,7 @@ type reconcileNodeLabels struct {
 // make sure reconcileNodeLabels implement the Reconciler interface
 var _ reconcile.Reconciler = &reconcileNodeLabels{}
 
-func (r *reconcileNodeLabels) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *reconcileNodeLabels) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	// set up a convinient log object so we don't have to type request over and over again
 	log := r.log.WithValues("request", request)
 

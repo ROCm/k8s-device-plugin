@@ -1,4 +1,4 @@
-// This package provides a framework (Device Plugin Manager, DPM) that makes implementation of
+// Package dpm (Device Plugin Manager) provides a framework that makes implementation of
 // Device Plugins https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
 // easier. It provides abstraction of Plugins, thanks to it a user does not need to implement
 // actual gRPC server. It also handles dynamic management of available resources and their
