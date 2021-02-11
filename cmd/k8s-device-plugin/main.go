@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/RadeonOpenCompute/k8s-device-plugin/internal/pkg/amdgpu"
+	"github.com/RadeonOpenCompute/k8s-device-plugin/internal/pkg/hwloc"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
@@ -129,14 +130,46 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 
 	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
 
-	i := 0
-	for id := range p.AMDGPUs {
-		devs[i] = &pluginapi.Device{
-			ID:     id,
-			Health: pluginapi.Healthy,
+	// limit scope for hwloc
+	func() {
+		var hw hwloc.Hwloc
+		hw.Init()
+		defer hw.Destroy()
+
+		i := 0
+		for id := range p.AMDGPUs {
+			dev := &pluginapi.Device{
+				ID:     id,
+				Health: pluginapi.Healthy,
+			}
+			devs[i] = dev
+			i++
+
+			numas, err := hw.GetNUMANodes(id)
+			glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
+			if err != nil {
+				glog.Error(err)
+				continue
+			}
+
+			if len(numas) == 0 {
+				glog.Errorf("No NUMA for GPU ID: %s", id)
+				continue
+			}
+
+			numaNodes := make([]*pluginapi.NUMANode, len(numas))
+			for j, v := range numas {
+				numaNodes[j] = &pluginapi.NUMANode{
+					ID: int64(v),
+				}
+			}
+
+			dev.Topology = &pluginapi.TopologyInfo{
+				Nodes: numaNodes,
+			}
 		}
-		i++
-	}
+	}()
+
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
 	for {
@@ -241,9 +274,16 @@ func (l *Lister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 var gitDescribe string
 
 func main() {
+	versions := [...]string{
+		"AMD GPU device plugin for Kubernetes",
+		fmt.Sprintf("%s version %s", os.Args[0], gitDescribe),
+		fmt.Sprintf("%s", hwloc.GetVersions()),
+	}
+
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "AMD GPU device plugin for Kubernetes\n")
-		fmt.Fprintf(os.Stderr, "%s version %s\n", os.Args[0], gitDescribe)
+		for _, v := range versions {
+			fmt.Fprintf(os.Stderr, "%s\n", v)
+		}
 		fmt.Fprintln(os.Stderr, "Usage:")
 		flag.PrintDefaults()
 	}
@@ -252,8 +292,9 @@ func main() {
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
 
-	glog.Infof("AMD GPU device plugin for Kubernetes")
-	glog.Infof("%s version %s\n", os.Args[0], gitDescribe)
+	for _, v := range versions {
+		glog.Infof("%s", v)
+	}
 
 	l := Lister{
 		ResUpdateChan: make(chan dpm.PluginNameList),
