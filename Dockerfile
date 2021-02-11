@@ -13,6 +13,7 @@
 #  limitations under the License.
 FROM golang:1.15.7-alpine3.13
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
+RUN apk --no-cache add hwloc-dev --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 RUN mkdir -p /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
 ADD . /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
 RUN go install \
@@ -22,6 +23,7 @@ RUN go install \
 FROM alpine:3.13
 MAINTAINER Kenny Ho <Kenny.Ho@amd.com>
 RUN apk --no-cache add ca-certificates libdrm
+RUN apk --no-cache add hwloc --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-device-plugin .
 CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
