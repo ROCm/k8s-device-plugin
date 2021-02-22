@@ -69,7 +69,7 @@ $ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-devi
 
 
 ## Notes
-* This plugin uses [`go dep`][gd] for dependencies management
+* This plugin uses [`go modules`][gm] for dependencies management
 * Please consult the `Dockerfile` on how to build and use this plugin independent of a docker image
 
 ## TODOs
@@ -82,7 +82,7 @@ $ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-devi
 [rocminstall]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/ROCk-kernel.html#rock-kernel
 [amdgpuinstall]: https://support.amd.com/en-us/kb-articles/Pages/AMDGPU-PRO-Install.aspx
 [sysreq]: http://rocm-documentation.readthedocs.io/en/latest/Installation_Guide/Installation-Guide.html#system-requirement
-[gd]: https://github.com/golang/dep
+[gm]: https://blog.golang.org/using-go-modules
 [kubeadm]: https://kubernetes.io/docs/setup/independent/install-kubeadm/#before-you-begin
 [k8sinstall]: https://kubernetes.io/docs/setup/independent/install-kubeadm
 [k8s]: https://kubernetes.io
