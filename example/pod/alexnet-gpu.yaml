@@ -11,7 +11,7 @@ spec:
       workingDir: /root
       env:
       - name: HIP_VISIBLE_DEVICES
-        value: "0" # # 0,1,2,...,n for running on GPU and select the GPUs, -1 for running on CPU 
+        value: "0" # # 0,1,2,...,n for running on GPU and select the GPUs, -1 for running on CPU
       command: ["/bin/bash", "-c", "--"]
       args: ["python3 benchmarks/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=alexnet; trap : TERM INT; sleep infinity & wait"]
       resources:
