@@ -24,4 +24,7 @@ MAINTAINER Kenny Ho <Kenny.Ho@amd.com>
 RUN apk --no-cache add ca-certificates libdrm
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-node-labeller .
+
 CMD ["./k8s-node-labeller"]
+ENTRYPOINT ["/k8s-node-labeller"]
+LABEL io.k8s.display-name="k8s-node-labeller"

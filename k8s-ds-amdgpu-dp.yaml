@@ -20,6 +20,12 @@ spec:
       containers:
       - image: rocm/k8s-device-plugin
         name: amdgpu-dp-cntr
+        command:
+          - /k8s-device-plugin
+        args:
+          - "logtostderr=true"
+          - "-stderrthreshold=INFO"
+          - "-v=5"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
