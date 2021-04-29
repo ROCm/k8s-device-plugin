@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM golang:1.15.7-alpine3.13
+FROM golang:1.16.3-alpine3.13
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
 RUN apk --no-cache add hwloc-dev --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 RUN mkdir -p /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
