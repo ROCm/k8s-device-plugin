@@ -1,31 +1,48 @@
 # This is a configuration example for the node labeller which includes
-# ClusterRole and ClusterRoleBinding definitions, as well as the 
+# ClusterRole and ClusterRoleBinding definitions, as well as the
 # DeamonSet configuration that deploys the actual node labeller
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRole
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: cr-node-labeller
-rules:
-- apiGroups: [""]
-  resources: ["nodes"]
-  verbs: ["watch", "get", "list", "update"]
+  name: radeon-labeller
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: labeller
-  namespace: default
+  name: radeon-labeller-role
+rules:
+- apiGroups:
+  - policy
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use
+  resourceNames:
+  - radeon-labeller-role
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - watch
+  - get
+  - list
+  - update
+  resourceNames:
+  - radeon-labeller-role
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: radeon-labeller-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cr-node-labeller
+  kind: Role
+  name: radeon-labeller-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: radeon-labeller-role
   namespace: default
-- kind: ServiceAccount
-  name: default
-  namespace: kube-system
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -43,6 +60,7 @@ spec:
       labels:
         name: amdgpu-lr-ds
     spec:
+      serviceAccount: radeon
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
