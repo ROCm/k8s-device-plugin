@@ -22,8 +22,6 @@ securityContext:
     drop:
     - ALL
 
-nodeSelector: {}
-
 tolerations:
   - key: CriticalAddonsOnly
     operator: Exists
