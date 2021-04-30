@@ -31,6 +31,6 @@ tags
 *.out
 
 # Helm
-helm/charts
-helm/Chart.lock
-helm/requirements.lock
+helm/**/charts
+helm/**/Chart.lock
+helm/**/requirements.lock
