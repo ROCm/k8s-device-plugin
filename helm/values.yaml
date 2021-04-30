@@ -1,0 +1,29 @@
+labeller:
+  enabled: false
+
+namespace: kube-system
+
+dp:
+  image:
+    repository: docker.io/rocm/k8s-device-plugin
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: ""
+
+lbl:
+  image:
+    repository: docker.io/rocm/k8s-device-plugin
+    tag: "labeller-latest"
+
+imagePullSecrets: []
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+
+nodeSelector: {}
+
+tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists

@@ -1,0 +1,75 @@
+{{- if .Values.labeller.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: cr-{{ .Chart.Name }}-node-labeller
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["watch", "get", "list", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: crb-{{ .Chart.Name }}-labeller
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cr-{{ .Chart.Name }}-node-labeller
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
+- kind: ServiceAccount
+  name: default
+  namespace: {{ .Values.namespace }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Chart.Name }}-labeller-daemonset
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      name: amdgpu-lr-ds
+  template:
+    metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ""
+      labels:
+        name: amdgpu-lr-ds
+    spec:
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      containers:
+      - image: {{ .Values.lbl.image.repository }}:{{ .Values.lbl.image.tag }}
+        name: {{ .Chart.Name }}-lr-cntr
+        imagePullPolicy: Always
+        workingDir: /root
+        command: ["./k8s-node-labeller"]
+        args: ["-vram", "-cu-count", "-simd-count", "-device-id", "-family"]
+        env:
+          - name: DS_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        securityContext:
+          privileged: true #Needed for /dev
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: sys
+            mountPath: /sys
+          - name: dev
+            mountPath: /dev
+      volumes:
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: dev
+          hostPath:
+            path: /dev
+{{- end }}

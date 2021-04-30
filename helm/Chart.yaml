@@ -1,0 +1,10 @@
+apiVersion: v2
+name: amd-gpu
+description: A Helm chart for deploying Kubernetes AMD GPU device plugin
+kubeVersion: ">= 1.18.0"
+maintainers:
+  - name: Kenny Ho
+
+type: application
+version: 0.1.0
+appVersion: "1.18.0"

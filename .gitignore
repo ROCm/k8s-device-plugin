@@ -29,3 +29,8 @@ tags
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# Helm
+helm/charts
+helm/Chart.lock
+helm/requirements.lock
