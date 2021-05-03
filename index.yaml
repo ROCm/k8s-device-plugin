@@ -1,0 +1,18 @@
+apiVersion: v1
+entries:
+  amd-gpu:
+  - apiVersion: v2
+    appVersion: 1.18.0
+    created: "2021-05-03T22:53:17.68435217Z"
+    description: A Helm chart for deploying Kubernetes AMD GPU device plugin
+    digest: f413484520ec57217f7c1ecc8edd8ad660664983166af7048b33f6524d5a04c2
+    icon: https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/helm/logo.png
+    kubeVersion: '>= 1.18.0'
+    maintainers:
+    - name: Kenny Ho
+    name: amd-gpu
+    type: application
+    urls:
+    - https://github.com/RadeonOpenCompute/k8s-device-plugin/releases/download/amd-gpu-helm-0.1.0/amd-gpu-0.1.0.tgz
+    version: 0.1.0
+generated: "2021-05-03T22:53:17.68436467Z"
