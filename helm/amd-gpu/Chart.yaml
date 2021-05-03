@@ -1,6 +1,7 @@
 apiVersion: v2
 name: amd-gpu
 description: A Helm chart for deploying Kubernetes AMD GPU device plugin
+icon: https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/helm/logo.png
 kubeVersion: ">= 1.18.0"
 maintainers:
   - name: Kenny Ho
