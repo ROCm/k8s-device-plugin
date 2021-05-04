@@ -1,12 +1,18 @@
 # AMD GPU Helm Chart
 
-![Version: 0.1.0](https://img.shields.io/badge/Version-0.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.18.0](https://img.shields.io/badge/AppVersion-1.18.0-informational?style=flat-square)
+![Version: 0.2.0](https://img.shields.io/badge/Version-0.2.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.18.0](https://img.shields.io/badge/AppVersion-1.18.0-informational?style=flat-square)
 
 A Helm chart for deploying Kubernetes AMD GPU device plugin
 
 ## Requirements
 
 Kubernetes: `>= 1.18.0`
+
+## Optional Dependencies
+
+| Repository | Name | Version |
+|------------|------|---------|
+| https://kubernetes-sigs.github.io/node-feature-discovery/charts | node-feature-discovery | 0.8.1 |
 
 ## Values
 
@@ -19,6 +25,8 @@ Kubernetes: `>= 1.18.0`
 | lbl.image.repository | string | `"docker.io/rocm/k8s-device-plugin"` |  |
 | lbl.image.tag | string | `"labeller-latest"` |  |
 | namespace | string | `"kube-system"` |  |
+| nfd.enabled | bool | `false` |  |
+| node_selector."feature.node.kubernetes.io/pci-0300_1002.present" | string | `"true"` |  |
 | securityContext.allowPrivilegeEscalation | bool | `false` |  |
 | securityContext.capabilities.drop[0] | string | `"ALL"` |  |
 | tolerations[0].key | string | `"CriticalAddonsOnly"` |  |

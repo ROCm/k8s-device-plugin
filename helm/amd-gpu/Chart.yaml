@@ -15,5 +15,11 @@ keywords:
   - gpu
 
 kubeVersion: ">= 1.18.0"
-version: 0.1.0
+version: 0.2.0
 appVersion: "1.18.0"
+
+dependencies:
+- name: node-feature-discovery
+  version: "0.8.1"
+  repository: "https://kubernetes-sigs.github.io/node-feature-discovery/charts"
+  condition: nfd.enabled

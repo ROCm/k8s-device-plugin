@@ -1,3 +1,6 @@
+nfd:
+  enabled: false
+
 labeller:
   enabled: false
 
@@ -25,3 +28,6 @@ securityContext:
 tolerations:
   - key: CriticalAddonsOnly
     operator: Exists
+
+node_selector:
+  feature.node.kubernetes.io/pci-0300_1002.present: "true"
