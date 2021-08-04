@@ -4,12 +4,12 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: radeon-labeller
+  name: amd-gpu-labeller
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: radeon-labeller-role
+  name: amd-gpu-labeller-role
 rules:
 - apiGroups:
   - policy
@@ -18,7 +18,7 @@ rules:
   verbs:
   - use
   resourceNames:
-  - radeon-labeller-role
+  - amd-gpu-labeller-role
 - apiGroups:
   - ""
   resources:
@@ -29,19 +29,19 @@ rules:
   - list
   - update
   resourceNames:
-  - radeon-labeller-role
+  - amd-gpu-labeller-role
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: radeon-labeller-rolebinding
+  name: amd-gpu-labeller-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: radeon-labeller-role
+  name: amd-gpu-labeller-role
 subjects:
 - kind: ServiceAccount
-  name: radeon-labeller-role
+  name: amd-gpu-labeller-role
   namespace: default
 ---
 apiVersion: apps/v1
@@ -60,7 +60,7 @@ spec:
       labels:
         name: amdgpu-lr-ds
     spec:
-      serviceAccount: radeon
+      serviceAccount: amd-gpu
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
