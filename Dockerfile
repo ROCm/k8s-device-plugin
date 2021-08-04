@@ -27,6 +27,6 @@ RUN apk --no-cache add hwloc --repository=http://dl-cdn.alpinelinux.org/alpine/e
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-device-plugin .
 
-CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
-ENTRYPOINT ["/k8s-device-plugin"]
+ENTRYPOINT ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
+CMD ["/k8s-device-plugin"]
 LABEL io.k8s.display-name="k8s-device-plugin"
