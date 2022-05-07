@@ -2,7 +2,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/RadeonOpenCompute/k8s-device-plugin)](https://goreportcard.com/report/github.com/RadeonOpenCompute/k8s-device-plugin)
 
 ## Introduction
-This is a [Kubernetes][k8s] [device plugin][dp] implementation that enables the registration of AMD GPU in a container cluster for compute workload.  With the approrpriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU.
+This is a [Kubernetes][k8s] [device plugin][dp] implementation that enables the registration of AMD GPU in a container cluster for compute workload.  With the appropriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU.
 
 More information about [RadeonOpenCompute (ROCm)][rocm]
 
@@ -19,7 +19,7 @@ More information about [RadeonOpenCompute (ROCm)][rocm]
 * This plugin targets Kubernetes v1.18+.
 
 ## Deployment
-The device plugin needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernetes [DaemonSet][ds], which run a copy of a pod on all (or some) Nodes in the cluster.  We have a pre-built Docker image on [DockerHub][dhk8samdgpudp] that you can use for with your DaemonSet.  This repository also have a pre-defined yaml file named `k8s-ds-amdgpu-dp.yaml`.  You can create a DaemonSet in your Kubernetes cluster by running this command:
+The device plugin needs to be run on all the nodes that are equipped with AMD GPU.  The simplest way of doing so is to create a Kubernetes [DaemonSet][ds], which run a copy of a pod on all (or some) Nodes in the cluster.  We have a pre-built Docker image on [DockerHub][dhk8samdgpudp] that you can use for with your DaemonSet.  This repository also have a pre-defined yaml file named `k8s-ds-amdgpu-dp.yaml`.  You can create a DaemonSet in your Kubernetes cluster by running this command:
 ```
 $ kubectl create -f k8s-ds-amdgpu-dp.yaml
 ```
