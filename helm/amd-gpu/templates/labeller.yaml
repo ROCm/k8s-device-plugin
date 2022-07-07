@@ -72,6 +72,8 @@ spec:
             mountPath: /sys
           - name: dev
             mountPath: /dev
+        resources:
+          {{- toYaml .Values.lbl.resources | nindent 10 }}
       volumes:
         - name: sys
           hostPath:

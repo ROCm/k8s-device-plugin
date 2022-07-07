@@ -11,11 +11,13 @@ dp:
     repository: docker.io/rocm/k8s-device-plugin
     # Overrides the image tag whose default is the chart appVersion.
     tag: ""
+  resources: {}
 
 lbl:
   image:
     repository: docker.io/rocm/k8s-device-plugin
     tag: "labeller-latest"
+  resources: {}
 
 imagePullSecrets: []
 

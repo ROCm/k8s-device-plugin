@@ -38,6 +38,8 @@ spec:
               mountPath: /var/lib/kubelet/device-plugins
             - name: sys
               mountPath: /sys
+          resources:
+            {{- toYaml .Values.dp.resources | nindent 12 }}
       volumes:
         - name: dp
           hostPath:
