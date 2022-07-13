@@ -14,7 +14,7 @@ keywords:
   - hardware
   - gpu
 
-kubeVersion: ">= 1.18.0"
+kubeVersion: ">= 1.18.0-0"
 version: 0.2.0
 appVersion: "1.18.0"
 
