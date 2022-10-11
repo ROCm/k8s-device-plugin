@@ -41,11 +41,9 @@ spec:
       labels:
         name: amdgpu-lr-ds
     spec:
-      {{- if .Values.nfd.enabled }}
       {{- with .Values.node_selector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
-      {{- end }}
       {{- end }}
       {{- with .Values.tolerations }}
       tolerations:
