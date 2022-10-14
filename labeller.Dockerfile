@@ -1,4 +1,4 @@
-# Copyright 2018 Advanced Micro Devices, Inc.  All rights reserved.
+# Copyright 2022 Advanced Micro Devices, Inc.  All rights reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -11,16 +11,20 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM golang:1.15.7-alpine3.13
+FROM docker.io/golang:1.19.2-alpine3.16
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
 RUN mkdir -p /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
 ADD . /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
+WORKDIR /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/cmd/k8s-node-labeller
 RUN go install \
-    -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/ describe --always --long --dirty)" \
-    github.com/RadeonOpenCompute/k8s-device-plugin/cmd/k8s-node-labeller
+    -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/ describe --always --long --dirty)" 
 
-FROM alpine:3.13
-MAINTAINER Kenny Ho <Kenny.Ho@amd.com>
+FROM alpine:3.16
+LABEL \
+    org.opencontainers.image.source="https://github.com/RadeonOpenCompute/k8s-device-plugin" \
+    org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
+    org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
+    org.opencontainers.image.licenses="Apache-2.0"
 RUN apk --no-cache add ca-certificates libdrm
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-node-labeller .

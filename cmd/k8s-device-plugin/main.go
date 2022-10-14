@@ -192,6 +192,15 @@ func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListA
 	// returning a value with this function will unregister the plugin from k8s
 }
 
+// GetPreferredAllocation returns a preferred set of devices to allocate
+// from a list of available ones. The resulting preferred allocation is not
+// guaranteed to be the allocation ultimately performed by the
+// devicemanager. It is only designed to help the devicemanager make a more
+// informed allocation decision when possible.
+func (p *Plugin) GetPreferredAllocation(context.Context, *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
+	return &pluginapi.PreferredAllocationResponse{}, nil
+}
+
 // Allocate is called during container creation so that the Device
 // Plugin can run device specific operations and instruct Kubelet
 // of the steps to make the Device available in the container
