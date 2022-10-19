@@ -9,11 +9,10 @@ spec:
       name: amdgpu-dp-ds
   template:
     metadata:
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
         name: amdgpu-dp-ds
     spec:
+      priorityClassName: system-node-critical
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists

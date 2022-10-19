@@ -36,8 +36,6 @@ spec:
       name: amdgpu-lr-ds
   template:
     metadata:
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
         name: amdgpu-lr-ds
     spec:
@@ -47,6 +45,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- end }}
+      priorityClassName: system-node-critical
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
