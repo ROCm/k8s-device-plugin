@@ -38,11 +38,10 @@ spec:
       name: amdgpu-lr-ds
   template:
     metadata:
-      annotations:
-        scheduler.alpha.kubernetes.io/critical-pod: ""
       labels:
         name: amdgpu-lr-ds
     spec:
+      priorityClassName: system-node-critical
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists

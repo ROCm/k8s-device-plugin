@@ -31,15 +31,16 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/config/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	logf "sigs.k8s.io/controller-runtime/pkg/internal/log"
 	intrec "sigs.k8s.io/controller-runtime/pkg/internal/recorder"
 	"sigs.k8s.io/controller-runtime/pkg/leaderelection"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/recorder"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
@@ -90,13 +91,16 @@ type Manager interface {
 
 	// GetLogger returns this manager's logger.
 	GetLogger() logr.Logger
+
+	// GetControllerOptions returns controller global configuration options.
+	GetControllerOptions() v1alpha1.ControllerConfigurationSpec
 }
 
-// Options are the arguments for creating a new Manager
+// Options are the arguments for creating a new Manager.
 type Options struct {
-	// Scheme is the scheme used to resolve runtime.Objects to GroupVersionKinds / Resources
+	// Scheme is the scheme used to resolve runtime.Objects to GroupVersionKinds / Resources.
 	// Defaults to the kubernetes/client-go scheme.Scheme, but it's almost always better
-	// idea to pass your own scheme in.  See the documentation in pkg/scheme for more information.
+	// to pass your own scheme in. See the documentation in pkg/scheme for more information.
 	Scheme *runtime.Scheme
 
 	// MapperProvider provides the rest mapper used to map go types to Kubernetes APIs
@@ -108,6 +112,25 @@ type Options struct {
 	// value only if you know what you are doing. Defaults to 10 hours if unset.
 	// there will a 10 percent jitter between the SyncPeriod of all controllers
 	// so that all controllers will not send list requests simultaneously.
+	//
+	// This applies to all controllers.
+	//
+	// A period sync happens for two reasons:
+	// 1. To insure against a bug in the controller that causes an object to not
+	// be requeued, when it otherwise should be requeued.
+	// 2. To insure against an unknown bug in controller-runtime, or its dependencies,
+	// that causes an object to not be requeued, when it otherwise should be
+	// requeued, or to be removed from the queue, when it otherwise should not
+	// be removed.
+	//
+	// If you want
+	// 1. to insure against missed watch events, or
+	// 2. to poll services that cannot be watched,
+	// then we recommend that, instead of changing the default period, the
+	// controller requeue, with a constant duration `t`, whenever the controller
+	// is "done" with an object, and would otherwise not requeue it, i.e., we
+	// recommend the `Reconcile` function return `reconcile.Result{RequeueAfter: t}`,
+	// instead of `reconcile.Result{}`.
 	SyncPeriod *time.Duration
 
 	// Logger is the logger that should be used by this manager.
@@ -119,18 +142,36 @@ type Options struct {
 	LeaderElection bool
 
 	// LeaderElectionResourceLock determines which resource lock to use for leader election,
-	// defaults to "configmapsleases". Change this value only if you know what you are doing.
-	// Otherwise, users of your controller might end up with multiple running instances that
+	// defaults to "leases". Change this value only if you know what you are doing.
+	//
+	// If you are using `configmaps`/`endpoints` resource lock and want to migrate to "leases",
+	// you might do so by migrating to the respective multilock first ("configmapsleases" or "endpointsleases"),
+	// which will acquire a leader lock on both resources.
+	// After all your users have migrated to the multilock, you can go ahead and migrate to "leases".
+	// Please also keep in mind, that users might skip versions of your controller.
+	//
+	// Note: before controller-runtime version v0.7, it was set to "configmaps".
+	// And from v0.7 to v0.11, the default was "configmapsleases", which was
+	// used to migrate from configmaps to leases.
+	// Since the default was "configmapsleases" for over a year, spanning five minor releases,
+	// any actively maintained operators are very likely to have a released version that uses
+	// "configmapsleases". Therefore defaulting to "leases" should be safe since v0.12.
+	//
+	// So, what do you have to do when you are updating your controller-runtime dependency
+	// from a lower version to v0.12 or newer?
+	// - If your operator matches at least one of these conditions:
+	//   - the LeaderElectionResourceLock in your operator has already been explicitly set to "leases"
+	//   - the old controller-runtime version is between v0.7.0 and v0.11.x and the
+	//     LeaderElectionResourceLock wasn't set or was set to "leases"/"configmapsleases"/"endpointsleases"
+	//   feel free to update controller-runtime to v0.12 or newer.
+	// - Otherwise, you may have to take these steps:
+	//   1. update controller-runtime to v0.12 or newer in your go.mod
+	//   2. set LeaderElectionResourceLock to "configmapsleases" (or "endpointsleases")
+	//   3. package your operator and upgrade it in all your clusters
+	//   4. only if you have finished 3, you can remove the LeaderElectionResourceLock to use the default "leases"
+	// Otherwise, your operator might end up with multiple running instances that
 	// each acquired leadership through different resource locks during upgrades and thus
 	// act on the same resources concurrently.
-	// If you want to migrate to the "leases" resource lock, you might do so by migrating to the
-	// respective multilock first ("configmapsleases" or "endpointsleases"), which will acquire a
-	// leader lock on both resources. After all your users have migrated to the multilock, you can
-	// go ahead and migrate to "leases". Please also keep in mind, that users might skip versions
-	// of your controller.
-	//
-	// Note: before controller-runtime version v0.7, the resource lock was set to "configmaps".
-	// Please keep this in mind, when planning a proper migration path for your controller.
 	LeaderElectionResourceLock string
 
 	// LeaderElectionNamespace determines the namespace in which the leader
@@ -163,11 +204,11 @@ type Options struct {
 	// between tries of actions. Default is 2 seconds.
 	RetryPeriod *time.Duration
 
-	// Namespace if specified restricts the manager's cache to watch objects in
-	// the desired namespace Defaults to all namespaces
+	// Namespace, if specified, restricts the manager's cache to watch objects in
+	// the desired namespace. Defaults to all namespaces.
 	//
 	// Note: If a namespace is specified, controllers can still Watch for a
-	// cluster-scoped resource (e.g Node).  For namespaced resources the cache
+	// cluster-scoped resource (e.g Node). For namespaced resources, the cache
 	// will only hold objects from the desired namespace.
 	Namespace string
 
@@ -187,27 +228,39 @@ type Options struct {
 	LivenessEndpointName string
 
 	// Port is the port that the webhook server serves at.
-	// It is used to set webhook.Server.Port.
+	// It is used to set webhook.Server.Port if WebhookServer is not set.
 	Port int
 	// Host is the hostname that the webhook server binds to.
-	// It is used to set webhook.Server.Host.
+	// It is used to set webhook.Server.Host if WebhookServer is not set.
 	Host string
 
 	// CertDir is the directory that contains the server key and certificate.
-	// if not set, webhook server would look up the server key and certificate in
+	// If not set, webhook server would look up the server key and certificate in
 	// {TempDir}/k8s-webhook-server/serving-certs. The server key and certificate
 	// must be named tls.key and tls.crt, respectively.
+	// It is used to set webhook.Server.CertDir if WebhookServer is not set.
 	CertDir string
-	// Functions to all for a user to customize the values that will be injected.
+
+	// WebhookServer is an externally configured webhook.Server. By default,
+	// a Manager will create a default server using Port, Host, and CertDir;
+	// if this is set, the Manager will use this server instead.
+	WebhookServer *webhook.Server
+
+	// Functions to allow for a user to customize values that will be injected.
 
 	// NewCache is the function that will create the cache to be used
 	// by the manager. If not set this will use the default new cache function.
 	NewCache cache.NewCacheFunc
 
-	// ClientBuilder is the builder that creates the client to be used by the manager.
+	// NewClient is the func that creates the client to be used by the manager.
 	// If not set this will create the default DelegatingClient that will
 	// use the cache for reads and the client for writes.
-	ClientBuilder ClientBuilder
+	NewClient cluster.NewClientFunc
+
+	// BaseContext is the function that provides Context values to Runnables
+	// managed by the Manager. If a BaseContext function isn't provided, Runnables
+	// will receive a new Background Context instead.
+	BaseContext BaseContextFunc
 
 	// ClientDisableCacheFor tells the client that, if any cache is used, to bypass it
 	// for the given objects.
@@ -230,6 +283,11 @@ type Options struct {
 	// The graceful shutdown is skipped for safety reasons in case the leader election lease is lost.
 	GracefulShutdownTimeout *time.Duration
 
+	// Controller contains global configuration options for controllers
+	// registered within this manager.
+	// +optional
+	Controller v1alpha1.ControllerConfigurationSpec
+
 	// makeBroadcaster allows deferring the creation of the broadcaster to
 	// avoid leaking goroutines if we never call Start on this manager.  It also
 	// returns whether or not this is a "owned" broadcaster, and as such should be
@@ -242,6 +300,10 @@ type Options struct {
 	newMetricsListener     func(addr string) (net.Listener, error)
 	newHealthProbeListener func(addr string) (net.Listener, error)
 }
+
+// BaseContextFunc is a function used to provide a base Context to Runnables
+// managed by a Manager.
+type BaseContextFunc func() context.Context
 
 // Runnable allows a component to be started.
 // It's very important that Start blocks until
@@ -258,7 +320,7 @@ type Runnable interface {
 // until it's done running.
 type RunnableFunc func(context.Context) error
 
-// Start implements Runnable
+// Start implements Runnable.
 func (r RunnableFunc) Start(ctx context.Context) error {
 	return r(ctx)
 }
@@ -282,10 +344,10 @@ func New(config *rest.Config, options Options) (Manager, error) {
 		clusterOptions.SyncPeriod = options.SyncPeriod
 		clusterOptions.Namespace = options.Namespace
 		clusterOptions.NewCache = options.NewCache
-		clusterOptions.ClientBuilder = options.ClientBuilder
+		clusterOptions.NewClient = options.NewClient
 		clusterOptions.ClientDisableCacheFor = options.ClientDisableCacheFor
 		clusterOptions.DryRunClient = options.DryRunClient
-		clusterOptions.EventBroadcaster = options.EventBroadcaster
+		clusterOptions.EventBroadcaster = options.EventBroadcaster //nolint:staticcheck
 	})
 	if err != nil {
 		return nil, err
@@ -300,11 +362,21 @@ func New(config *rest.Config, options Options) (Manager, error) {
 	}
 
 	// Create the resource lock to enable leader election)
-	leaderConfig := config
-	if options.LeaderElectionConfig != nil {
-		leaderConfig = options.LeaderElectionConfig
+	var leaderConfig *rest.Config
+	var leaderRecorderProvider *intrec.Provider
+
+	if options.LeaderElectionConfig == nil {
+		leaderConfig = rest.CopyConfig(config)
+		leaderRecorderProvider = recorderProvider
+	} else {
+		leaderConfig = rest.CopyConfig(options.LeaderElectionConfig)
+		leaderRecorderProvider, err = options.newRecorderProvider(leaderConfig, cluster.GetScheme(), options.Logger.WithName("events"), options.makeBroadcaster)
+		if err != nil {
+			return nil, err
+		}
 	}
-	resourceLock, err := options.newResourceLock(leaderConfig, recorderProvider, leaderelection.Options{
+
+	resourceLock, err := options.newResourceLock(leaderConfig, leaderRecorderProvider, leaderelection.Options{
 		LeaderElection:             options.LeaderElection,
 		LeaderElectionResourceLock: options.LeaderElectionResourceLock,
 		LeaderElectionID:           options.LeaderElectionID,
@@ -331,31 +403,41 @@ func New(config *rest.Config, options Options) (Manager, error) {
 		return nil, err
 	}
 
+	errChan := make(chan error)
+	runnables := newRunnables(options.BaseContext, errChan)
+
 	return &controllerManager{
-		cluster:                 cluster,
-		recorderProvider:        recorderProvider,
-		resourceLock:            resourceLock,
-		metricsListener:         metricsListener,
-		metricsExtraHandlers:    metricsExtraHandlers,
-		logger:                  options.Logger,
-		elected:                 make(chan struct{}),
-		port:                    options.Port,
-		host:                    options.Host,
-		certDir:                 options.CertDir,
-		leaseDuration:           *options.LeaseDuration,
-		renewDeadline:           *options.RenewDeadline,
-		retryPeriod:             *options.RetryPeriod,
-		healthProbeListener:     healthProbeListener,
-		readinessEndpointName:   options.ReadinessEndpointName,
-		livenessEndpointName:    options.LivenessEndpointName,
-		gracefulShutdownTimeout: *options.GracefulShutdownTimeout,
-		internalProceduresStop:  make(chan struct{}),
+		stopProcedureEngaged:          pointer.Int64(0),
+		cluster:                       cluster,
+		runnables:                     runnables,
+		errChan:                       errChan,
+		recorderProvider:              recorderProvider,
+		resourceLock:                  resourceLock,
+		metricsListener:               metricsListener,
+		metricsExtraHandlers:          metricsExtraHandlers,
+		controllerOptions:             options.Controller,
+		logger:                        options.Logger,
+		elected:                       make(chan struct{}),
+		port:                          options.Port,
+		host:                          options.Host,
+		certDir:                       options.CertDir,
+		webhookServer:                 options.WebhookServer,
+		leaseDuration:                 *options.LeaseDuration,
+		renewDeadline:                 *options.RenewDeadline,
+		retryPeriod:                   *options.RetryPeriod,
+		healthProbeListener:           healthProbeListener,
+		readinessEndpointName:         options.ReadinessEndpointName,
+		livenessEndpointName:          options.LivenessEndpointName,
+		gracefulShutdownTimeout:       *options.GracefulShutdownTimeout,
+		internalProceduresStop:        make(chan struct{}),
+		leaderElectionStopped:         make(chan struct{}),
+		leaderElectionReleaseOnCancel: options.LeaderElectionReleaseOnCancel,
 	}, nil
 }
 
 // AndFrom will use a supplied type and convert to Options
 // any options already set on Options will be ignored, this is used to allow
-// cli flags to override anything specified in the config file
+// cli flags to override anything specified in the config file.
 func (o Options) AndFrom(loader config.ControllerManagerConfiguration) (Options, error) {
 	if inj, wantsScheme := loader.(inject.Scheme); wantsScheme {
 		err := inj.InjectScheme(o.Scheme)
@@ -407,10 +489,20 @@ func (o Options) AndFrom(loader config.ControllerManagerConfiguration) (Options,
 		o.CertDir = newObj.Webhook.CertDir
 	}
 
+	if newObj.Controller != nil {
+		if o.Controller.CacheSyncTimeout == nil && newObj.Controller.CacheSyncTimeout != nil {
+			o.Controller.CacheSyncTimeout = newObj.Controller.CacheSyncTimeout
+		}
+
+		if len(o.Controller.GroupKindConcurrency) == 0 && len(newObj.Controller.GroupKindConcurrency) > 0 {
+			o.Controller.GroupKindConcurrency = newObj.Controller.GroupKindConcurrency
+		}
+	}
+
 	return o, nil
 }
 
-// AndFromOrDie will use options.AndFrom() and will panic if there are errors
+// AndFromOrDie will use options.AndFrom() and will panic if there are errors.
 func (o Options) AndFromOrDie(loader config.ControllerManagerConfiguration) Options {
 	o, err := o.AndFrom(loader)
 	if err != nil {
@@ -420,7 +512,12 @@ func (o Options) AndFromOrDie(loader config.ControllerManagerConfiguration) Opti
 }
 
 func (o Options) setLeaderElectionConfig(obj v1alpha1.ControllerManagerConfigurationSpec) Options {
-	if o.LeaderElection == false && obj.LeaderElection.LeaderElect != nil {
+	if obj.LeaderElection == nil {
+		// The source does not have any configuration; noop
+		return o
+	}
+
+	if !o.LeaderElection && obj.LeaderElection.LeaderElect != nil {
 		o.LeaderElection = *obj.LeaderElection.LeaderElect
 	}
 
@@ -451,7 +548,7 @@ func (o Options) setLeaderElectionConfig(obj v1alpha1.ControllerManagerConfigura
 	return o
 }
 
-// defaultHealthProbeListener creates the default health probes listener bound to the given address
+// defaultHealthProbeListener creates the default health probes listener bound to the given address.
 func defaultHealthProbeListener(addr string) (net.Listener, error) {
 	if addr == "" || addr == "0" {
 		return nil, nil
@@ -459,14 +556,19 @@ func defaultHealthProbeListener(addr string) (net.Listener, error) {
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("error listening on %s: %v", addr, err)
+		return nil, fmt.Errorf("error listening on %s: %w", addr, err)
 	}
 	return ln, nil
 }
 
-// setOptionsDefaults set default values for Options fields
-func setOptionsDefaults(options Options) Options {
+// defaultBaseContext is used as the BaseContext value in Options if one
+// has not already been set.
+func defaultBaseContext() context.Context {
+	return context.Background()
+}
 
+// setOptionsDefaults set default values for Options fields.
+func setOptionsDefaults(options Options) Options {
 	// Allow newResourceLock to be mocked
 	if options.newResourceLock == nil {
 		options.newResourceLock = leaderelection.NewResourceLock
@@ -524,8 +626,12 @@ func setOptionsDefaults(options Options) Options {
 		options.GracefulShutdownTimeout = &gracefulShutdownTimeout
 	}
 
-	if options.Logger == nil {
-		options.Logger = logf.RuntimeLog.WithName("manager")
+	if options.Logger.GetSink() == nil {
+		options.Logger = log.Log
+	}
+
+	if options.BaseContext == nil {
+		options.BaseContext = defaultBaseContext
 	}
 
 	return options
