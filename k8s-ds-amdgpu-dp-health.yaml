@@ -18,6 +18,8 @@ spec:
       labels:
         name: amdgpu-dp-ds
     spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
       priorityClassName: system-node-critical
       tolerations:
       - key: CriticalAddonsOnly

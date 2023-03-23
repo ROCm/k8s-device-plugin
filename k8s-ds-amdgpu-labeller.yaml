@@ -1,5 +1,5 @@
 # This is a configuration example for the node labeller which includes
-# ClusterRole and ClusterRoleBinding definitions, as well as the 
+# ClusterRole and ClusterRoleBinding definitions, as well as the
 # DeamonSet configuration that deploys the actual node labeller
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -41,6 +41,8 @@ spec:
       labels:
         name: amdgpu-lr-ds
     spec:
+      nodeSelector:
+        kubernetes.io/arch: amd64
       priorityClassName: system-node-critical
       tolerations:
       - key: CriticalAddonsOnly
