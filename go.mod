@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/go-logr/logr v1.2.3
 	github.com/golang/glog v1.0.0
-	github.com/kubevirt/device-plugin-manager v1.19.3
+	github.com/kubevirt/device-plugin-manager v1.19.4
 	golang.org/x/net v0.4.0
 	k8s.io/api v0.25.2
 	k8s.io/apimachinery v0.25.2

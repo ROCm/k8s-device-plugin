@@ -74,15 +74,16 @@ func (dpi *devicePlugin) StartServer() error {
 		return nil
 	}
 
-	if err := dpi.register(); err != nil {
-		glog.Errorf("error registering with device plugin manager: %v", err)
-		return err
-	}
 	err := dpi.serve()
 	if err != nil {
 		return err
 	}
 
+	err = dpi.register()
+	if err != nil {
+		dpi.StopServer()
+		return err
+	}
 	dpi.Running = true
 
 	return nil
