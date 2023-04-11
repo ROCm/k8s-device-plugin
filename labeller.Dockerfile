@@ -19,7 +19,7 @@ WORKDIR /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/cmd/k8s-node-labe
 RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/ describe --always --long --dirty)" 
 
-FROM alpine:3.17
+FROM alpine:3.17.3
 LABEL \
     org.opencontainers.image.source="https://github.com/RadeonOpenCompute/k8s-device-plugin" \
     org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
