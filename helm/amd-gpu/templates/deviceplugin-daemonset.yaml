@@ -11,6 +11,13 @@ spec:
     metadata:
       labels:
         name: {{ .Chart.Name }}-dp-ds
+{{- with .Values.dp.podLabels }}
+{{- toYaml . | nindent 8 }}
+{{- end }}
+{{- with .Values.dp.podAnnotations }}
+      annotations:
+{{ toYaml . | indent 8 }}
+{{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

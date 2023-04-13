@@ -15,7 +15,7 @@ keywords:
   - gpu
 
 kubeVersion: ">= 1.18.0-0"
-version: 0.8.0
+version: 0.8.1
 appVersion: "1.25.2.3"
 
 dependencies:
