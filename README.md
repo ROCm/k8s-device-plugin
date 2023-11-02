@@ -30,6 +30,10 @@ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device
 
 If you want to enable the experimental device health check, please use `k8s-ds-amdgpu-dp-health.yaml` **after** `--allow-privileged=true` is set for kube-apiserver and kublet.
 
+### Helm Chart
+
+If you want to deploy this device plugin using Helm, a [Helm Chart][helmamdgpu] is available via [Artifact Hub][artifacthub].
+
 ## Example workload
 You can restrict work to a node with GPU by adding `resources.limits` to the pod definition.  An example pod definition is provided in `example/pod/alexnet-gpu.yaml`.  This pod runs the timing benchmark for AlexNet on AMD GPU and then go to sleep. You can create the pod by running:
 ```
@@ -75,8 +79,10 @@ $ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-devi
 ## TODOs
 * Add proper GPU health check (health check without `/dev/kfd` access.)
 
+[artifacthub]: https://artifacthub.io/
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
 [dp]: https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
+[helmamdgpu]: https://artifacthub.io/packages/helm/amd-gpu-helm/amd-gpu
 [rocm]: https://docs.amd.com/en/latest/rocm.html
 [rock]: https://github.com/RadeonOpenCompute/ROCK-Kernel-Driver
 [rocminstall]: https://docs.amd.com/en/latest/deploy/linux/quick_start.html
