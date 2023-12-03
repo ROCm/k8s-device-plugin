@@ -1,5 +1,5 @@
 {{- if .Values.labeller.enabled }}
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: cr-{{ .Chart.Name }}-node-labeller
@@ -8,7 +8,7 @@ rules:
   resources: ["nodes"]
   verbs: ["watch", "get", "list", "update"]
 ---
-apiVersion: rbac.authorization.k8s.io/v1beta1
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: crb-{{ .Chart.Name }}-labeller
