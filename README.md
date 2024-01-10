@@ -87,7 +87,7 @@ $ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-devi
 [rock]: https://github.com/RadeonOpenCompute/ROCK-Kernel-Driver
 [rocminstall]: https://docs.amd.com/en/latest/deploy/linux/quick_start.html
 [amdgpuinstall]: https://amdgpu-install.readthedocs.io/en/latest/
-[sysreq]: https://docs.amd.com/en/latest/release/gpu_os_support.html
+[sysreq]: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html
 [gm]: https://blog.golang.org/using-go-modules
 [kubeadm]: https://kubernetes.io/docs/setup/independent/install-kubeadm/#before-you-begin
 [k8sinstall]: https://kubernetes.io/docs/setup/independent/install-kubeadm
