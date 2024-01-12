@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM docker.io/golang:1.19.13-alpine3.18
+FROM docker.io/golang:1.21.6-alpine3.19
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
 RUN apk --no-cache add hwloc-dev --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 RUN mkdir -p /go/src/github.com/RadeonOpenCompute/k8s-device-plugin
@@ -20,7 +20,7 @@ WORKDIR /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/cmd/k8s-device-pl
 RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/RadeonOpenCompute/k8s-device-plugin/ describe --always --long --dirty)" 
 
-FROM alpine:3.18.4
+FROM alpine:3.19.0
 LABEL \
     org.opencontainers.image.source="https://github.com/RadeonOpenCompute/k8s-device-plugin" \
     org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
