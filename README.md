@@ -83,7 +83,7 @@ $ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-devi
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
 [dp]: https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
 [helmamdgpu]: https://artifacthub.io/packages/helm/amd-gpu-helm/amd-gpu
-[rocm]: https://docs.amd.com/en/latest/rocm.html
+[rocm]: https://docs.amd.com/en/latest/what-is-rocm.html
 [rock]: https://github.com/RadeonOpenCompute/ROCK-Kernel-Driver
 [rocminstall]: https://docs.amd.com/en/latest/deploy/linux/quick_start.html
 [amdgpuinstall]: https://amdgpu-install.readthedocs.io/en/latest/
