@@ -15,8 +15,8 @@ keywords:
   - gpu
 
 kubeVersion: ">= 1.18.0-0"
-version: 0.10.0
-appVersion: "1.25.2.5"
+version: 0.11.0
+appVersion: "1.25.2.6"
 
 dependencies:
 - name: node-feature-discovery
