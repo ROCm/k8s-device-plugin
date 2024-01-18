@@ -27,8 +27,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/RadeonOpenCompute/k8s-device-plugin/internal/pkg/amdgpu"
-	"github.com/RadeonOpenCompute/k8s-device-plugin/internal/pkg/hwloc"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/hwloc"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"

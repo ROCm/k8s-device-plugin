@@ -1,10 +1,10 @@
 # AMD GPU device plugin for Kubernetes
-[![Go Report Card](https://goreportcard.com/badge/github.com/RadeonOpenCompute/k8s-device-plugin)](https://goreportcard.com/report/github.com/RadeonOpenCompute/k8s-device-plugin)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ROCm/k8s-device-plugin)](https://goreportcard.com/report/github.com/ROCm/k8s-device-plugin)
 
 ## Introduction
 This is a [Kubernetes][k8s] [device plugin][dp] implementation that enables the registration of AMD GPU in a container cluster for compute workload.  With the appropriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU.
 
-More information about [RadeonOpenCompute (ROCm)][rocm]
+More information about [ROCm][rocm].
 
 
 ## Prerequisites
@@ -25,7 +25,7 @@ $ kubectl create -f k8s-ds-amdgpu-dp.yaml
 ```
 or directly pull from the web using
 ```
-kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml
+kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml
 ```
 
 If you want to enable the experimental device health check, please use `k8s-ds-amdgpu-dp-health.yaml` **after** `--allow-privileged=true` is set for kube-apiserver and kublet.
@@ -43,7 +43,7 @@ $ kubectl create -f alexnet-gpu.yaml
 or
 
 ```
-$ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/example/pod/alexnet-gpu.yaml
+$ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/example/pod/alexnet-gpu.yaml
 ```
 
 and then check the pod status by running
@@ -68,7 +68,7 @@ $ kubectl create -f k8s-ds-amdgpu-labeller.yaml
 or
 
 ```
-$ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml
+$ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml
 ```
 
 
@@ -84,7 +84,7 @@ $ kubectl create -f https://raw.githubusercontent.com/RadeonOpenCompute/k8s-devi
 [dp]: https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
 [helmamdgpu]: https://artifacthub.io/packages/helm/amd-gpu-helm/amd-gpu
 [rocm]: https://docs.amd.com/en/latest/what-is-rocm.html
-[rock]: https://github.com/RadeonOpenCompute/ROCK-Kernel-Driver
+[rock]: https://github.com/ROCm/ROCK-Kernel-Driver
 [rocminstall]: https://docs.amd.com/en/latest/deploy/linux/quick_start.html
 [amdgpuinstall]: https://amdgpu-install.readthedocs.io/en/latest/
 [sysreq]: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html
