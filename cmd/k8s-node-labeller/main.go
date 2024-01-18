@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/RadeonOpenCompute/k8s-device-plugin/internal/pkg/amdgpu"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
