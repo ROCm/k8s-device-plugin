@@ -79,13 +79,13 @@ $ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/mas
 ## TODOs
 * Add proper GPU health check (health check without `/dev/kfd` access.)
 
-[artifacthub]: https://artifacthub.io/
+[artifacthub]: https://artifacthub.io/packages/helm/amd-gpu-helm/amd-gpu
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
 [dp]: https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
 [helmamdgpu]: https://artifacthub.io/packages/helm/amd-gpu-helm/amd-gpu
 [rocm]: https://docs.amd.com/en/latest/what-is-rocm.html
 [rock]: https://github.com/ROCm/ROCK-Kernel-Driver
-[rocminstall]: https://docs.amd.com/en/latest/deploy/linux/quick_start.html
+[rocminstall]: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/tutorial/quick-start.html
 [amdgpuinstall]: https://amdgpu-install.readthedocs.io/en/latest/
 [sysreq]: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html
 [gm]: https://blog.golang.org/using-go-modules
