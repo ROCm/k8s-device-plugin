@@ -19,7 +19,7 @@ WORKDIR /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller
 RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/ROCm/k8s-device-plugin/ describe --always --long --dirty)"
 
-FROM alpine:3.19.0
+FROM alpine:3.19.1
 LABEL \
     org.opencontainers.image.source="https://github.com/ROCm/k8s-device-plugin" \
     org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
