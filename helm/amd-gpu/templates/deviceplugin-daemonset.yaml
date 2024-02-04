@@ -16,11 +16,9 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.nfd.enabled }}
       {{- with .Values.node_selector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
-      {{- end }}
       {{- end }}
       priorityClassName: system-node-critical
       {{- with .Values.tolerations }}
