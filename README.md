@@ -12,7 +12,7 @@ More information about [ROCm][rocm].
 * [kubeadm capable machines][kubeadm] (if you are using kubeadm to deploy your k8s cluster)
 * [ROCm kernel][rock] ([Installation guide][rocminstall]) or latest AMD GPU Linux driver ([Installation guide][amdgpuinstall])
 * A [Kubernetes deployment][k8sinstall]
-* Ability to run privileged pods (for example the `--allow-privileged=true` flag for kube-apiserver), if the device plugin is deployed via DaemonSet since the device plugin container requires privileged security context to access `/dev/kfd` for device health check
+* If device health checks are enabled, the pods must be allowed to run in privileged mode (for example the `--allow-privileged=true` flag for kube-apiserver), in order to access `/dev/kfd`
 
 
 ## Limitations
