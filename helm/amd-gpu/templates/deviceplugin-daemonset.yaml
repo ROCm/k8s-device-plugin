@@ -16,7 +16,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.nfd.enabled }}
+      {{- if .Values.node_selector_enabled }}
       {{- with .Values.node_selector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

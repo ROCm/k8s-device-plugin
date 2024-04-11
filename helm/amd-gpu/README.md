@@ -26,6 +26,7 @@ Kubernetes: `>= 1.18.0`
 | lbl.image.tag | string | `"labeller-latest"` |  |
 | namespace | string | `"kube-system"` |  |
 | nfd.enabled | bool | `false` |  |
+| node_selector_enabled | bool | `false` |  |
 | node_selector."feature.node.kubernetes.io/pci-0300_1002.present" | string | `"true"` |  |
 | securityContext.allowPrivilegeEscalation | bool | `false` |  |
 | securityContext.capabilities.drop[0] | string | `"ALL"` |  |
