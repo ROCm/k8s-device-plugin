@@ -9,7 +9,7 @@ rules:
   verbs: ["watch", "get", "list", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: crb-{{ .Chart.Name }}-labeller
 roleRef:
