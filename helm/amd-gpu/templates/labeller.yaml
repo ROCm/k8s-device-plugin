@@ -9,10 +9,9 @@ rules:
   verbs: ["watch", "get", "list", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: crb-{{ .Chart.Name }}-labeller
-  namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -20,16 +19,12 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: default
-  namespace: default
-- kind: ServiceAccount
-  name: default
-  namespace: {{ .Values.namespace }}
+  namespace: {{ .Release.namespace }}
 ---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ .Chart.Name }}-labeller-daemonset
-  namespace: {{ .Values.namespace }}
 spec:
   selector:
     matchLabels:

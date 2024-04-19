@@ -4,8 +4,6 @@ nfd:
 labeller:
   enabled: false
 
-namespace: kube-system
-
 dp:
   image:
     repository: docker.io/rocm/k8s-device-plugin

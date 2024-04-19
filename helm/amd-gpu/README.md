@@ -24,7 +24,6 @@ Kubernetes: `>= 1.18.0`
 | labeller.enabled | bool | `false` |  |
 | lbl.image.repository | string | `"docker.io/rocm/k8s-device-plugin"` |  |
 | lbl.image.tag | string | `"labeller-latest"` |  |
-| namespace | string | `"kube-system"` |  |
 | nfd.enabled | bool | `false` |  |
 | node_selector_enabled | bool | `false` |  |
 | node_selector."feature.node.kubernetes.io/pci-0300_1002.present" | string | `"true"` |  |
