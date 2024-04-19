@@ -19,7 +19,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: default
-  namespace: {{ .Release.namespace }}
+  namespace: {{ .Release.Namespace }}
 ---
 apiVersion: apps/v1
 kind: DaemonSet
