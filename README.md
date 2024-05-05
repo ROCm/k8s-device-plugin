@@ -83,7 +83,7 @@ $ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/mas
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
 [dp]: https://kubernetes.io/docs/concepts/cluster-administration/device-plugins/
 [helmamdgpu]: https://artifacthub.io/packages/helm/amd-gpu-helm/amd-gpu
-[rocm]: https://docs.amd.com/en/latest/what-is-rocm.html
+[rocm]: https://rocm.docs.amd.com/en/latest/what-is-rocm.html
 [rock]: https://github.com/ROCm/ROCK-Kernel-Driver
 [rocminstall]: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/tutorial/quick-start.html
 [amdgpuinstall]: https://amdgpu-install.readthedocs.io/en/latest/
