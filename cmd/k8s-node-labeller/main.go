@@ -295,9 +295,9 @@ func main() {
 	// laballer only respond to event about the node it is on by matching hostname
 	hostname := os.Getenv("DS_NODE_NAME")
 
-	pred := predicate.Funcs{
+	pred := predicate.TypedFuncs[*corev1.Node]{
 		// Create returns true if the Create event should be processed
-		CreateFunc: func(e event.CreateEvent) bool {
+		CreateFunc: func(e event.TypedCreateEvent[*corev1.Node]) bool {
 			if hostname == e.Object.GetName() {
 				return true
 			}
@@ -305,24 +305,24 @@ func main() {
 		},
 
 		// Delete returns true if the Delete event should be processed
-		DeleteFunc: func(e event.DeleteEvent) bool {
+		DeleteFunc: func(e event.TypedDeleteEvent[*corev1.Node]) bool {
 			return false
 		},
 
 		// Update returns true if the Update event should be processed
-		UpdateFunc: func(e event.UpdateEvent) bool {
+		UpdateFunc: func(e event.TypedUpdateEvent[*corev1.Node]) bool {
 			return false
 		},
 
 		// Generic returns true if the Generic event should be processed
-		GenericFunc: func(e event.GenericEvent) bool {
+		GenericFunc: func(e event.TypedGenericEvent[*corev1.Node]) bool {
 			//entryLog.Info("predicate generic triggered: ")
 			return false
 		},
 	}
 
 	// Watch Nodes and enqueue Nodes object key
-	if err := c.Watch(&source.Kind{Type: &corev1.Node{}}, &handler.EnqueueRequestForObject{}, &pred); err != nil {
+	if err := c.Watch(source.Kind(mgr.GetCache(), &corev1.Node{}, &handler.TypedEnqueueRequestForObject[*corev1.Node]{}, &pred)); err != nil {
 		entryLog.Error(err, "unable to watch Node")
 		os.Exit(1)
 	}

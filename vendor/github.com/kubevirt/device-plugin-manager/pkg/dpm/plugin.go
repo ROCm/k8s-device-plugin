@@ -113,7 +113,7 @@ func (dpi *devicePlugin) serve() error {
 	// Wait till grpc server is ready.
 	for i := 0; i < 10; i++ {
 		services := dpi.Server.GetServiceInfo()
-		if len(services) > 1 {
+		if len(services) >= 1 {
 			break
 		}
 		time.Sleep(1 * time.Second)
