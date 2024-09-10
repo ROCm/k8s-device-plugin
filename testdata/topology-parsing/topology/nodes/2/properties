@@ -17,7 +17,7 @@ max_slots_scratch_cu 32
 vendor_id 4098
 device_id 26720
 location_id 6400
-drm_render_minor 128
+drm_render_minor 129
 max_engine_clk_fcompute 1500
 local_mem_size 17163091968
 fw_version 392

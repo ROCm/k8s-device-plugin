@@ -17,9 +17,11 @@
 package amdgpu
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -211,5 +213,19 @@ func TestParseDebugFSFirmwareInfo(t *testing.T) {
 	}
 	if len(feat) != len(expFeat) || len(fw) != len(expFw) {
 		t.Errorf("Incorrect parsing of amdgpu firmware info from debugfs")
+	}
+}
+
+func TestRenderNodeSetFromTopology(t *testing.T) {
+	renderNodes := renderNodeSetFromTopology("../../../testdata/topology-parsing-mi308")
+
+	expNodes := map[int]bool{128: true, 129: true}
+	if !reflect.DeepEqual(renderNodes, expNodes) {
+		val, _ := json.MarshalIndent(renderNodes, "", "  ")
+		exp, _ := json.MarshalIndent(expNodes, "", "  ")
+
+		t.Errorf("RenderNode set was incorrect")
+		t.Errorf("Got: %s", val)
+		t.Errorf("Want: %s", exp)
 	}
 }

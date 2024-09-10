@@ -128,6 +128,8 @@ func (p *Plugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartCon
 func (p *Plugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 	p.AMDGPUs = amdgpu.GetAMDGPUs()
 
+	glog.Infof("Found %d AMDGPUs", len(p.AMDGPUs))
+
 	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
 
 	// limit scope for hwloc

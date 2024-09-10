@@ -95,21 +95,52 @@ func GetAMDGPUs() map[string]map[string]int {
 	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
 
 	devices := make(map[string]map[string]int)
+	card, renderD := 0, 128
 
 	for _, path := range matches {
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
-		devices[filepath.Base(path)] = make(map[string]int)
 
 		for _, devPath := range devPaths {
 			switch name := filepath.Base(devPath); {
 			case name[0:4] == "card":
-				devices[filepath.Base(path)][name[0:4]], _ = strconv.Atoi(name[4:])
+				card, _ = strconv.Atoi(name[4:])
 			case name[0:7] == "renderD":
-				devices[filepath.Base(path)][name[0:7]], _ = strconv.Atoi(name[7:])
+				renderD, _ = strconv.Atoi(name[7:])
 			}
 		}
+
+		devices[filepath.Base(path)] = map[string]int{"card": card, "renderD": renderD}
 	}
+
+	// certain products have additional devices (such as MI300's partitions)
+	//ex: /sys/devices/platform/amdgpu_xcp_30
+	platformMatches, _ := filepath.Glob("/sys/devices/platform/amdgpu_xcp_*")
+
+	// This is needed because some of the visible renderD are actually not valid
+	// Their validity depends on topology information from KFD
+        topoRenderNodes := renderNodeSetFromTopology()
+
+	for _, path := range platformMatches {
+		glog.Info(path)
+		devPaths, _ := filepath.Glob(path + "/drm/*")
+
+		for _, devPath := range devPaths {
+			switch name := filepath.Base(devPath); {
+			case name[0:4] == "card":
+				card, _ = strconv.Atoi(name[4:])
+			case name[0:7] == "renderD":
+				renderD, _ = strconv.Atoi(name[7:])
+			}
+		}
+
+		if !topoRenderNodes[renderD] {
+			continue
+		}
+
+		devices[filepath.Base(path)] = map[string]int{"card": card, "renderD": renderD}
+	}
+
 	return devices
 }
 
@@ -273,4 +304,39 @@ func parseDebugFSFirmwareInfo(path string) (map[string]uint32, map[string]uint32
 	}
 
 	return feat, fw
+}
+
+var topoDrmRenderMinorRe = regexp.MustCompile(`drm_render_minor\s(\d+)`)
+
+func renderNodeSetFromTopology(topoRootParam ...string) map[int]bool {
+	topoRoot := "/sys/class/kfd/kfd"
+	if len(topoRootParam) == 1 {
+		topoRoot = topoRootParam[0]
+	}
+
+	renderNodes := make(map[int]bool)
+	var nodeFiles []string
+	var err error
+
+	if nodeFiles, err = filepath.Glob(topoRoot + "/topology/nodes/*/properties"); err != nil {
+		glog.Fatalf("glob error: %s", err)
+		return renderNodes
+	}
+
+	for _, nodeFile := range nodeFiles {
+		glog.Info("Parsing " + nodeFile)
+		v, e := ParseTopologyProperties(nodeFile, topoDrmRenderMinorRe)
+		if e != nil {
+			glog.Error(e)
+			continue
+		}
+
+		if v <= 0 {
+			continue
+		}
+
+		renderNodes[int(v)] = true
+	}
+
+	return renderNodes
 }
