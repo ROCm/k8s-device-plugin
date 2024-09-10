@@ -1,6 +1,6 @@
 module github.com/ROCm/k8s-device-plugin
 
-go 1.21
+go 1.23
 
 require (
 	github.com/go-logr/logr v1.2.3
