@@ -14,14 +14,14 @@
  *  limitations under the License.
 **/
 
-package main
+package plugin
 
 import (
 	"testing"
 )
 
 func TestCountGPUDevFromTopology(t *testing.T) {
-	count := countGPUDevFromTopology("../../testdata/topology-parsing")
+	count := countGPUDevFromTopology("../../../testdata/topology-parsing")
 
 	expCount := 2
 	if count != expCount {
