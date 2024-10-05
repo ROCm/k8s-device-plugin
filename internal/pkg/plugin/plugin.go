@@ -21,9 +21,11 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"syscall"
 
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/hwloc"
@@ -37,6 +39,7 @@ import (
 type AMDGPUPlugin struct {
 	AMDGPUs   map[string]map[string]int
 	Heartbeat chan bool
+	signal    chan os.Signal
 }
 
 // Start is an optional interface that could be implemented by plugin.
@@ -45,6 +48,9 @@ type AMDGPUPlugin struct {
 // method could be used to prepare resources before they are offered
 // to Kubernetes.
 func (p *AMDGPUPlugin) Start() error {
+	p.signal =  make(chan os.Signal, 1)
+	signal.Notify(p.signal, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+
 	return nil
 }
 
@@ -172,6 +178,7 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 
 	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
+	loop:
 	for {
 		select {
 		case <-p.Heartbeat:
@@ -187,9 +194,14 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 				devs[i].Health = health
 			}
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+		case <-p.signal:
+			glog.Infof("Received signal, exiting")
+			break loop
 		}
 	}
 	// returning a value with this function will unregister the plugin from k8s
+
+	return nil
 }
 
 // GetPreferredAllocation returns a preferred set of devices to allocate
@@ -245,6 +257,7 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 type AMDGPULister struct {
 	ResUpdateChan chan dpm.PluginNameList
 	Heartbeat     chan bool
+	Signal        chan os.Signal
 }
 
 // GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
