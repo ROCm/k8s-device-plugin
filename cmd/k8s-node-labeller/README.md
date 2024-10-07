@@ -20,6 +20,7 @@ The Labeller needs to be run on all the nodes that are equipped with AMD GPU.  T
 The Labeller currently creates node label for the following AMD GPU properties:
 
 * Device ID (-device-id)
+* Product Name (-product-name)
 * VRAM Size (-vram)
 * Number of SIMD (-simd-count)
 * Number of Compute Unit (-cu-count)

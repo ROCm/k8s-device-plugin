@@ -115,6 +115,28 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 		}
 		return results
 	},
+	"product-name": func(gpus map[string]map[string]int) map[string]string {
+		counts := map[string]int{}
+		replacer := strings.NewReplacer(" ", "_")
+
+		for _, v := range gpus {
+			prodnamePath := fmt.Sprintf("/sys/class/drm/card%d/device/product_name", v["card"])
+			b, err := ioutil.ReadFile(prodnamePath)
+			if err != nil {
+				log.Error(err, prodnamePath)
+				continue
+			}
+			prodName := strings.TrimSpace(string(b))
+			counts[prodName]++
+		}
+
+		pfx := createLabelPrefix("product-name", true)
+		results := make(map[string]string, len(counts))
+		for k, v := range counts {
+			results[fmt.Sprintf("%s.%s", pfx, replacer.Replace(k))] = strconv.Itoa(v)
+		}
+		return results
+	},
 	"vram": func(gpus map[string]map[string]int) map[string]string {
 		const bytePerMB = int64(1024 * 1024)
 		counts := map[string]int{}
