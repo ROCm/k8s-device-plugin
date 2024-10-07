@@ -91,6 +91,38 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 		}
 		return results
 	},
+	"driver-version": func(gpus map[string]map[string]int) map[string]string {
+		version := ""
+		for _, v := range gpus {
+			versionPath := fmt.Sprintf("/sys/class/drm/card%d/device/driver/module/version", v["card"])
+			b, err := ioutil.ReadFile(versionPath)
+			if err != nil {
+				log.Error(err, versionPath)
+				continue
+			}
+			version = strings.TrimSpace(string(b))
+			break
+		}
+
+		pfx := createLabelPrefix("driver-version", false)
+		return map[string]string{pfx: version}
+	},
+	"driver-src-version": func(gpus map[string]map[string]int) map[string]string {
+		version := ""
+		for _, v := range gpus {
+			versionPath := fmt.Sprintf("/sys/class/drm/card%d/device/driver/module/srcversion", v["card"])
+			b, err := ioutil.ReadFile(versionPath)
+			if err != nil {
+				log.Error(err, versionPath)
+				continue
+			}
+			version = strings.TrimSpace(string(b))
+			break
+		}
+
+		pfx := createLabelPrefix("driver-src-version", false)
+		return map[string]string{pfx: version}
+	},
 	"device-id": func(gpus map[string]map[string]int) map[string]string {
 		counts := map[string]int{}
 
