@@ -21,6 +21,8 @@ The Labeller currently creates node label for the following AMD GPU properties:
 
 * Device ID (-device-id)
 * Product Name (-product-name)
+* Driver Version (-driver-version)
+* Driver Source Version (-driveri-src-version)
 * VRAM Size (-vram)
 * Number of SIMD (-simd-count)
 * Number of Compute Unit (-cu-count)
