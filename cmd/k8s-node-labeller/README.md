@@ -33,6 +33,13 @@ The Labeller currently creates node label for the following AMD GPU properties:
   * AI - Arctic Islands
   * RV - Raven
   * NV - Navi
+  * VGH - Van Gogh
+  * GC\_11\_0\_0 - GC 11.0.0
+  * YC - Yellow Carp
+  * GC\_11\_0\_1 - GC 11.0.1
+  * GC\_10\_3\_6 - GC 10.3.6
+  * GC\_10\_3\_7 - GC 10.3.7
+  * GC\_11\_5\_0 - GC 11.5.0
 
 Example result
 
