@@ -38,6 +38,21 @@ func createLabelPrefix(name string, experimental bool) string {
 	return fmt.Sprintf("%samd.com/gpu.%s", s, name)
 }
 
+func createLabels(kind string, entries map[string]int) map[string]string {
+	labels := make(map[string]string, len(entries))
+
+	prefix := createLabelPrefix(kind, true)
+	for k, v := range entries {
+		labels[fmt.Sprintf("%s.%s", prefix, k)] = strconv.Itoa(v)
+		if (len(entries) == 1) {
+			labels[prefix] = k
+		}
+	}
+
+	return labels
+}
+
+
 var reSizeInBytes = regexp.MustCompile(`size_in_bytes\s(\d+)`)
 var reSimdCount = regexp.MustCompile(`simd_count\s(\d+)`)
 var reSimdPerCu = regexp.MustCompile(`simd_per_cu\s(\d+)`)
@@ -84,12 +99,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			counts[fid]++
 		}
 
-		pfx := createLabelPrefix("family", true)
-		results := make(map[string]string, len(counts))
-		for k, v := range counts {
-			results[fmt.Sprintf("%s.%s", pfx, k)] = strconv.Itoa(v)
-		}
-		return results
+		return createLabels("family", counts)
 	},
 	"driver-version": func(gpus map[string]map[string]int) map[string]string {
 		version := ""
@@ -140,12 +150,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			counts[devid]++
 		}
 
-		pfx := createLabelPrefix("device-id", true)
-		results := make(map[string]string, len(counts))
-		for k, v := range counts {
-			results[fmt.Sprintf("%s.%s", pfx, k)] = strconv.Itoa(v)
-		}
-		return results
+		return createLabels("device-id", counts)
 	},
 	"product-name": func(gpus map[string]map[string]int) map[string]string {
 		counts := map[string]int{}
@@ -158,22 +163,16 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 				log.Error(err, prodnamePath)
 				continue
 			}
-			prodName := strings.TrimSpace(string(b))
+			prodName := replacer.Replace(strings.TrimSpace(string(b)))
 			counts[prodName]++
 		}
 
-		pfx := createLabelPrefix("product-name", true)
-		results := make(map[string]string, len(counts))
-		for k, v := range counts {
-			results[fmt.Sprintf("%s.%s", pfx, replacer.Replace(k))] = strconv.Itoa(v)
-		}
-		return results
+		return createLabels("product-name", counts)
 	},
 	"vram": func(gpus map[string]map[string]int) map[string]string {
 		const bytePerMB = int64(1024 * 1024)
 		counts := map[string]int{}
 
-		pfx := createLabelPrefix("vram", true)
 		for _, gpu := range gpus {
 			// /sys/class/drm/card<card #>/device/mem_info_vram_total
 			// size_in_bytes
@@ -195,11 +194,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			counts[fmt.Sprintf("%dG", s)]++
 		}
 
-		results := make(map[string]string, len(counts))
-		for k, v := range counts {
-			results[fmt.Sprintf("%s.%s", pfx, k)] = strconv.Itoa(v)
-		}
-		return results
+		return createLabels("vram", counts)
 	},
 	"simd-count": func(gpus map[string]map[string]int) map[string]string {
 		counts := map[string]int{}
@@ -213,7 +208,6 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			return map[string]string{}
 		}
 
-		pfx := createLabelPrefix("simd-count", true)
 		for _, gpu := range gpus {
 			// /sys/class/kfd/kfd/topology/nodes/*/properties
 			// simd_count
@@ -236,11 +230,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			}
 		}
 
-		results := make(map[string]string, len(counts))
-		for k, v := range counts {
-			results[fmt.Sprintf("%s.%s", pfx, k)] = strconv.Itoa(v)
-		}
-		return results
+		return createLabels("simd-count", counts)
 	},
 	"cu-count": func(gpus map[string]map[string]int) map[string]string {
 		counts := map[string]int{}
@@ -254,7 +244,6 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			return map[string]string{}
 		}
 
-		pfx := createLabelPrefix("cu-count", true)
 		for _, gpu := range gpus {
 			// /sys/class/kfd/kfd/topology/nodes/*/properties
 			// simd_count / simd_per_cu
@@ -282,13 +271,10 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			}
 		}
 
-		results := make(map[string]string, len(counts))
-		for k, v := range counts {
-			results[fmt.Sprintf("%s.%s", pfx, k)] = strconv.Itoa(v)
-		}
-		return results
+		return createLabels("simd-count", counts)
 	},
 }
+
 var labelProperties = make(map[string]*bool, len(labelGenerators))
 
 func generateLabels(lblProps map[string]*bool) map[string]string {
