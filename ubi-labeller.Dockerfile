@@ -37,9 +37,10 @@ LABEL \
     org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
     org.opencontainers.image.licenses="Apache-2.0"
 
-RUN microdnf install -y ca-certificates libdrm && \
+RUN mkdir -p /licenses && \
+    microdnf install -y ca-certificates libdrm && \
     microdnf clean all
-
+ADD ./LICENSE /licenses/LICENSE
 WORKDIR /root/
 COPY --from=builder /go/bin/k8s-node-labeller .
 CMD ["./k8s-node-labeller"]
