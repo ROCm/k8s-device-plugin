@@ -36,13 +36,15 @@ LABEL \
     org.opencontainers.image.authors="Yan Sun <Yan.Sun3@amd.com>" \
     org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
     org.opencontainers.image.licenses="Apache-2.0"
-RUN dnf install -y ca-certificates libdrm && \
+RUN mkdir -p /licenses && \
+    dnf install -y ca-certificates libdrm && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
     dnf install -y 'dnf-command(config-manager)' && \
     dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/ && \
     dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/ && \
     dnf install -y hwloc && \
     dnf clean all
+ADD ./LICENSE /licenses/LICENSE
 WORKDIR /root/
 COPY --from=builder /go/bin/k8s-device-plugin .
 CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
