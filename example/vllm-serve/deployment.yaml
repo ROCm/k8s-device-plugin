@@ -16,12 +16,6 @@ spec:
         app: mistral-7b
     spec:
       volumes:
-      - name: dev-kfd
-        hostPath:
-          path: /dev/kfd
-      - name: dev-dri
-        hostPath:
-          path: /dev/dri
       # vLLM needs to access the host's shared memory for tensor parallel inference.
       - name: shm
         emptyDir:
