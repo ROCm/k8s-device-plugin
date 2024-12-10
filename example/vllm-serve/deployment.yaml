@@ -63,7 +63,3 @@ spec:
         volumeMounts:
         - name: shm
           mountPath: /dev/shm
-        - name: dev-kfd
-          mountPath: /dev/kfd
-        - name: dev-dri
-          mountPath: /dev/dri
