@@ -41,6 +41,8 @@ spec:
             mountPath: /sys
           - name: dev
             mountPath: /dev
+          - name: health
+            mountPath: /var/lib/amd-metrics-exporter/
       volumes:
         - name: dp
           hostPath:
@@ -51,3 +53,6 @@ spec:
         - name: dev # Needed for health check
           hostPath:
             path: /dev
+        - name: health
+          hostPath:
+            path: /var/lib/amd-metrics-exporter/

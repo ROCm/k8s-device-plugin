@@ -36,6 +36,8 @@ spec:
               mountPath: /var/lib/kubelet/device-plugins
             - name: sys
               mountPath: /sys
+            - name: health
+              mountPath: /var/lib/amd-metrics-exporter/
           resources:
             {{- toYaml .Values.dp.resources | nindent 12 }}
       volumes:
@@ -45,3 +47,6 @@ spec:
         - name: sys
           hostPath:
             path: /sys
+        - name: health
+          hostPath:
+            path: /var/lib/amd-metrics-exporter/
