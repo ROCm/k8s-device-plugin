@@ -57,12 +57,6 @@ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/maste
             app: mistral-7b
         spec:
         volumes:
-        - name: dev-kfd
-            hostPath:
-            path: /dev/kfd
-        - name: dev-dri
-            hostPath:
-            path: /dev/dri
         # vLLM needs to access the host's shared memory for tensor parallel inference.
         - name: shm
             emptyDir:
@@ -103,10 +97,6 @@ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/maste
             volumeMounts:
             - name: shm
             mountPath: /dev/shm
-            - name: dev-kfd
-            mountPath: /dev/kfd
-            - name: dev-dri
-            mountPath: /dev/dri
     ```   
 
 3. Define the service.yaml
