@@ -1,4 +1,4 @@
-This example show hwo to deploy the vLLM serve with ROCm/k8s-device-plugin.
+This example show how to deploy the vLLM serve with ROCm/k8s-device-plugin.
 
 # Setup the k8s cluster
 You should setup the k8s cluster at first.
