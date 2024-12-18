@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: amd-pytorch-mnist
+spec:
+  restartPolicy: Never
+  tolerations:
+  - key: "amd.com/gpu"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: platform.neuromation.io/job
+    operator: Exists
+    effect: NoSchedule
+  containers:
+  - name: pytorch-trainer
+    image: rocm/pytorch:latest
+    command: ["python"]
+    args:
+      - "-c"
+      - |
+        import torch
+        import torch.nn as nn
+        import torch.optim as optim
+        from torchvision import datasets, transforms
+        from torch.utils.data import DataLoader
+
+        # Use the first AMD GPU device
+        device = torch.device("cuda:0")
+
+        # Download and prepare MNIST dataset
+        train_dataset = datasets.MNIST('/tmp/data', download=True, transform=transforms.ToTensor())
+        train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+        # Simple network: flatten + linear layer
+        model = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(28*28, 10)
+        ).to(device)
+
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        loss_fn = nn.CrossEntropyLoss()
+
+        # Train for one epoch
+        model.train()
+        for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = model(data)
+            loss = loss_fn(output, target)
+            loss.backward()
+            optimizer.step()
+
+            # Print progress every 100 batches
+            if batch_idx % 100 == 0:
+                print(f'Epoch 1, Batch {batch_idx}, Loss: {loss.item()}')
+    resources:
+      limits:
+        amd.com/gpu: "1"  
+    env:
+    - name: HIP_VISIBLE_DEVICES
+      value: "0"  

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: amd-gpu-training
+spec:
+  restartPolicy: OnFailure
+  tolerations:
+    - key: CriticalAddonsOnly
+      operator: Exists
+    - key: platform.neuromation.io/job
+      operator: Exists
+      effect: NoSchedule
+    - key: "amd.com/gpu"
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: training-container
+      image: rocm/pytorch:rocm6.1.2_ubuntu20.04_py3.9_pytorch_staging # Example ROCm-enabled PyTorch image
+      command: ["python", "train.py"] # Replace with your training script
+      resources:
+        limits:
+          amd.com/gpu: 1 # Requesting one AMD GPU

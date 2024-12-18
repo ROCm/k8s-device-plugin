@@ -1,19 +1,28 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: alexnet-tf-gpu-pod
+  name: alexnet-tf-gpu-pod-2
   labels:
     purpose: demo-tf-amdgpu
 spec:
+  tolerations:
+    - key: CriticalAddonsOnly
+      operator: Exists
+    - key: platform.neuromation.io/job
+      operator: Exists
+      effect: NoSchedule
+    - key: "amd.com/gpu"
+      operator: Exists
+      effect: NoSchedule
   containers:
     - name: alexnet-tf-gpu-container
       image: rocm/tensorflow:latest
       workingDir: /root
       env:
       - name: HIP_VISIBLE_DEVICES
-        value: "0" # # 0,1,2,...,n for running on GPU and select the GPUs, -1 for running on CPU
+        value: "0"
       command: ["/bin/bash", "-c", "--"]
       args: ["python3 /benchmarks/scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=alexnet; trap : TERM INT; sleep infinity & wait"]
       resources:
         limits:
-          amd.com/gpu: 1 # requesting a GPU
+          amd.com/gpu: 1
