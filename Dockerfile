@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM docker.io/golang:1.23.1-alpine3.20
+FROM docker.io/golang:1.23.4-alpine3.21
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
 RUN apk --no-cache add hwloc-dev --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
 RUN mkdir -p /go/src/github.com/ROCm/k8s-device-plugin
@@ -20,7 +20,7 @@ WORKDIR /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-device-plugin
 RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/ROCm/k8s-device-plugin/ describe --always --long --dirty)"
 
-FROM alpine:3.20.3
+FROM alpine:3.21.2
 LABEL \
     org.opencontainers.image.source="https://github.com/ROCm/k8s-device-plugin" \
     org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
