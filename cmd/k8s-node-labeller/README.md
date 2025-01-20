@@ -79,6 +79,10 @@ While container scheduling via label selector works for heterogeneous cluster, i
 
 ## TODOs
 
+## Disclaimer
+
+This optional labeller required privileged container for gpu feature discovery. It is recommended to consult with your cluster administrator or security expert to ensure appropriate security measures are in place.
+
 [ls]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
 [crd]: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/

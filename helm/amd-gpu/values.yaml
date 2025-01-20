@@ -15,7 +15,22 @@ lbl:
   image:
     repository: docker.io/rocm/k8s-device-plugin
     tag: "labeller-1.31.0.2"
+  serviceAccount:
+    annotations: {}
+  securityContext:
+    privileged: true # Needed for /dev
+    capabilities:
+      drop: ["ALL"]  
+    readOnlyRootFilesystem: false # true if -logtostderr flag set in labeller
+  # If you do want to specify resources, uncomment the following lines, 
+  # adjust them as necessary, and remove the curly braces after 'resources:'.
   resources: {}
+    # limits:
+    #   memory: 20Mi
+    #   cpu: 100m
+    # requests:
+    #   memory: 30Mi
+    #   cpu: 150m
 
 imagePullSecrets: []
 
