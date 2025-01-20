@@ -21,10 +21,13 @@ roleRef:
   name: cr-node-labeller
 subjects:
 - kind: ServiceAccount
-  name: default
-  namespace: default
-- kind: ServiceAccount
-  name: default
+  name: node-labeller-sa
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-labeller-sa
   namespace: kube-system
 ---
 apiVersion: apps/v1
@@ -41,6 +44,7 @@ spec:
       labels:
         name: amdgpu-lr-ds
     spec:
+      serviceAccountName: node-labeller-sa
       nodeSelector:
         kubernetes.io/arch: amd64
       priorityClassName: system-node-critical
@@ -68,6 +72,13 @@ spec:
             mountPath: /sys
           - name: dev
             mountPath: /dev
+        resources: {}
+          # limits:
+          #   memory: 20Mi
+          #   cpu: 100m
+          # requests:
+          #   memory: 30Mi
+          #   cpu: 150m
       volumes:
         - name: sys
           hostPath:

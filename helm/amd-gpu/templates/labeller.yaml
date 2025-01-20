@@ -1,30 +1,10 @@
+---
 {{- if .Values.labeller.enabled }}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: cr-{{ .Chart.Name }}-node-labeller
-rules:
-- apiGroups: [""]
-  resources: ["nodes"]
-  verbs: ["watch", "get", "list", "update"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: crb-{{ .Chart.Name }}-labeller
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cr-{{ .Chart.Name }}-node-labeller
-subjects:
-- kind: ServiceAccount
-  name: default
-  namespace: {{ .Release.Namespace }}
----
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ .Chart.Name }}-labeller-daemonset
+  namespace: {{ .Release.Namespace }}
 spec:
   selector:
     matchLabels:
@@ -34,6 +14,7 @@ spec:
       labels:
         name: amdgpu-lr-ds
     spec:
+      serviceAccountName: {{ .Chart.Name }}-node-labeller-sa
       {{- if .Values.node_selector_enabled }}
       {{- with .Values.node_selector }}
       nodeSelector:
@@ -58,9 +39,7 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
         securityContext:
-          privileged: true #Needed for /dev
-          capabilities:
-            drop: ["ALL"]
+          {{- toYaml .Values.lbl.securityContext | nindent 10 }}
         volumeMounts:
           - name: sys
             mountPath: /sys
