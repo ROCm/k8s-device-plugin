@@ -15,7 +15,7 @@ This tool automatically label nodes with GPU properties if a node has one or mor
 
 ## Deployment
 
-The Labeller needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernete [DaemonSet][ds], which runs a copy of a pod on all (or some) Nodes in the cluster.  An example configuration is available [here](../../k8s-ds-amdgpu-labeller.yaml).
+The Labeller needs to be run on all the nodes that are equipped with AMD GPU.  The simplist way of doing so is to create a Kubernete [DaemonSet][ds], which runs a copy of a pod on all (or some) Nodes in the cluster.  An example configuration is available [here](../../k8s-ds-amdgpu-labeller.yaml). This labeller required privileged container for gpu feature discovery. It is recommended to consult with your cluster administrator or security expert to ensure appropriate security measures are in place.
 
 The Labeller currently creates node label for the following AMD GPU properties:
 
@@ -78,10 +78,6 @@ While container scheduling via label selector works for heterogeneous cluster, i
 ## Notes
 
 ## TODOs
-
-## Disclaimer
-
-This optional labeller required privileged container for gpu feature discovery. It is recommended to consult with your cluster administrator or security expert to ensure appropriate security measures are in place.
 
 [ls]: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
