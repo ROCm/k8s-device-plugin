@@ -43,15 +43,26 @@ spec:
         volumeMounts:
           - name: sys
             mountPath: /sys
-          - name: dev
-            mountPath: /dev
+            readOnly: true
+          - name: dev-kfd
+            mountPath: /dev/kfd
+            readOnly: true
+          - name: dev-dri
+            mountPath: /dev/dri
+            readOnly: true
         resources:
           {{- toYaml .Values.lbl.resources | nindent 10 }}
       volumes:
         - name: sys
           hostPath:
             path: /sys
-        - name: dev
+            type: Directory
+        - name: dev-kfd
           hostPath:
-            path: /dev
+            path: /dev/kfd
+            type: CharDevice
+        - name: dev-dri
+          hostPath:
+            path: /dev/dri
+            type: Directory
 {{- end }}
