@@ -20,7 +20,10 @@ lbl:
   securityContext:
     privileged: true # Needed for /dev
     capabilities:
-      drop: ["ALL"]  
+      drop:
+        - ALL
+      add:
+        - CAP_SYS_ADMIN
     readOnlyRootFilesystem: false # true if -logtostderr flag set in labeller
   # If you do want to specify resources, uncomment the following lines, 
   # adjust them as necessary, and remove the curly braces after 'resources:'.
