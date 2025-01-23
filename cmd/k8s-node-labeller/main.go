@@ -23,6 +23,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 var log = logf.Log.WithName("amdgpu-node-labeller")
@@ -44,14 +46,14 @@ func createLabels(kind string, entries map[string]int) map[string]string {
 	prefix := createLabelPrefix(kind, true)
 	for k, v := range entries {
 		labels[fmt.Sprintf("%s.%s", prefix, k)] = strconv.Itoa(v)
-		if (len(entries) == 1) {
+		if len(entries) == 1 {
 			labels[prefix] = k
 		}
 	}
 
 	prefix = createLabelPrefix(kind, false)
 	for k, v := range entries {
-		if (len(entries) == 1) {
+		if len(entries) == 1 {
 			labels[prefix] = k
 		} else {
 			labels[fmt.Sprintf("%s.%s", prefix, k)] = strconv.Itoa(v)
@@ -60,7 +62,6 @@ func createLabels(kind string, entries map[string]int) map[string]string {
 
 	return labels
 }
-
 
 var reSizeInBytes = regexp.MustCompile(`size_in_bytes\s(\d+)`)
 var reSimdCount = regexp.MustCompile(`simd_count\s(\d+)`)
@@ -323,7 +324,10 @@ func main() {
 
 	// Setup a Manager
 	entryLog.Info("setting up manager")
-	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{})
+	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{
+		// disable the metrics server
+		Metrics: metricsserver.Options{BindAddress: "0"},
+	})
 	if err != nil {
 		entryLog.Error(err, "unable to set up overall controller manager")
 		os.Exit(1)
