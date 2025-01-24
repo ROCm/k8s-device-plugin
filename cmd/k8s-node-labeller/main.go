@@ -68,8 +68,8 @@ var reSimdCount = regexp.MustCompile(`simd_count\s(\d+)`)
 var reSimdPerCu = regexp.MustCompile(`simd_per_cu\s(\d+)`)
 var reDrmRenderMinor = regexp.MustCompile(`drm_render_minor\s(\d+)`)
 
-var labelGenerators = map[string]func(map[string]map[string]int) map[string]string{
-	"firmware": func(gpus map[string]map[string]int) map[string]string {
+var labelGenerators = map[string]func(map[string]map[string]interface{}) map[string]string{
+	"firmware": func(gpus map[string]map[string]interface{}) map[string]string {
 		counts := map[string]int{}
 
 		for _, v := range gpus {
@@ -97,7 +97,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 		}
 		return results
 	},
-	"family": func(gpus map[string]map[string]int) map[string]string {
+	"family": func(gpus map[string]map[string]interface{}) map[string]string {
 		counts := map[string]int{}
 
 		for _, v := range gpus {
@@ -111,7 +111,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 
 		return createLabels("family", counts)
 	},
-	"driver-version": func(gpus map[string]map[string]int) map[string]string {
+	"driver-version": func(gpus map[string]map[string]interface{}) map[string]string {
 		version := ""
 		for _, v := range gpus {
 			versionPath := fmt.Sprintf("/sys/class/drm/card%d/device/driver/module/version", v["card"])
@@ -127,7 +127,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 		pfx := createLabelPrefix("driver-version", false)
 		return map[string]string{pfx: version}
 	},
-	"driver-src-version": func(gpus map[string]map[string]int) map[string]string {
+	"driver-src-version": func(gpus map[string]map[string]interface{}) map[string]string {
 		version := ""
 		for _, v := range gpus {
 			versionPath := fmt.Sprintf("/sys/class/drm/card%d/device/driver/module/srcversion", v["card"])
@@ -143,7 +143,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 		pfx := createLabelPrefix("driver-src-version", false)
 		return map[string]string{pfx: version}
 	},
-	"device-id": func(gpus map[string]map[string]int) map[string]string {
+	"device-id": func(gpus map[string]map[string]interface{}) map[string]string {
 		counts := map[string]int{}
 
 		for _, v := range gpus {
@@ -162,7 +162,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 
 		return createLabels("device-id", counts)
 	},
-	"product-name": func(gpus map[string]map[string]int) map[string]string {
+	"product-name": func(gpus map[string]map[string]interface{}) map[string]string {
 		counts := map[string]int{}
 		replacer := strings.NewReplacer(" ", "_", "(", "", ")", "")
 
@@ -182,7 +182,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 
 		return createLabels("product-name", counts)
 	},
-	"vram": func(gpus map[string]map[string]int) map[string]string {
+	"vram": func(gpus map[string]map[string]interface{}) map[string]string {
 		const bytePerMB = int64(1024 * 1024)
 		counts := map[string]int{}
 
@@ -224,7 +224,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 
 		return createLabels("vram", counts)
 	},
-	"simd-count": func(gpus map[string]map[string]int) map[string]string {
+	"simd-count": func(gpus map[string]map[string]interface{}) map[string]string {
 		counts := map[string]int{}
 
 		propertiesPath := "/sys/class/kfd/kfd/topology/nodes/*/properties"
@@ -260,7 +260,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 
 		return createLabels("simd-count", counts)
 	},
-	"cu-count": func(gpus map[string]map[string]int) map[string]string {
+	"cu-count": func(gpus map[string]map[string]interface{}) map[string]string {
 		counts := map[string]int{}
 
 		propertiesPath := "/sys/class/kfd/kfd/topology/nodes/*/properties"
@@ -305,9 +305,28 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 
 var labelProperties = make(map[string]*bool, len(labelGenerators))
 
+func generatePartitionLabels() map[string]string {
+	_, deviceCountMap := amdgpu.GetAMDGPUs()
+	isHomogeneous := amdgpu.IsHomogeneous()
+
+	labels := make(map[string]string)
+
+	if isHomogeneous {
+		// Iterate through deviceCountMap and find the partition type with count > 0
+		for partitionType, count := range deviceCountMap {
+			if count > 0 {
+				labels["amd.com/compute-memory-partition"] = partitionType
+				break
+			}
+		}
+	}
+
+	return labels
+}
+
 func generateLabels(lblProps map[string]*bool) map[string]string {
 	results := make(map[string]string, len(labelGenerators))
-	gpus := amdgpu.GetAMDGPUs()
+	gpus, _ := amdgpu.GetAMDGPUs()
 
 	for l, f := range labelGenerators {
 		if !*lblProps[l] {
@@ -318,6 +337,13 @@ func generateLabels(lblProps map[string]*bool) map[string]string {
 			results[k] = v
 		}
 	}
+
+	// Add the new GPU labels
+	gpuLabels := generatePartitionLabels()
+	for k, v := range gpuLabels {
+		results[k] = v
+	}
+
 	return results
 }
 

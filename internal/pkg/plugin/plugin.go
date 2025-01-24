@@ -28,19 +28,20 @@ import (
 	"syscall"
 
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/exporter"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/hwloc"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
-	"github.com/ROCm/k8s-device-plugin/internal/pkg/exporter"
 )
 
 // Plugin is identical to DevicePluginServer interface of device plugin API.
 type AMDGPUPlugin struct {
-	AMDGPUs   map[string]map[string]int
+	AMDGPUs   map[string]map[string]interface{}
 	Heartbeat chan bool
 	signal    chan os.Signal
+	Resource  string
 }
 
 // Start is an optional interface that could be implemented by plugin.
@@ -49,7 +50,7 @@ type AMDGPUPlugin struct {
 // method could be used to prepare resources before they are offered
 // to Kubernetes.
 func (p *AMDGPUPlugin) Start() error {
-	p.signal =  make(chan os.Signal, 1)
+	p.signal = make(chan os.Signal, 1)
 	signal.Notify(p.signal, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
 	return nil
@@ -131,53 +132,102 @@ func (p *AMDGPUPlugin) PreStartContainer(ctx context.Context, r *pluginapi.PreSt
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // returns the new list
 func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
-	p.AMDGPUs = amdgpu.GetAMDGPUs()
+
+	p.AMDGPUs, _ = amdgpu.GetAMDGPUs()
 
 	glog.Infof("Found %d AMDGPUs", len(p.AMDGPUs))
 
 	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
+	var isHomogeneous bool
+	isHomogeneous = amdgpu.IsHomogeneous()
+	// Initialize a map to store partitionType based device list
+	partitionTypeDevs := make(map[string][]*pluginapi.Device)
 
-	// limit scope for hwloc
-	func() {
-		var hw hwloc.Hwloc
-		hw.Init()
-		defer hw.Destroy()
+	if isHomogeneous {
+		// limit scope for hwloc
+		func() {
+			var hw hwloc.Hwloc
+			hw.Init()
+			defer hw.Destroy()
 
-		i := 0
-		for id := range p.AMDGPUs {
-			dev := &pluginapi.Device{
-				ID:     id,
-				Health: pluginapi.Healthy,
-			}
-			devs[i] = dev
-			i++
+			i := 0
+			for id := range p.AMDGPUs {
+				dev := &pluginapi.Device{
+					ID:     id,
+					Health: pluginapi.Healthy,
+				}
+				devs[i] = dev
+				i++
 
-			numas, err := hw.GetNUMANodes(id)
-			glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
-			if err != nil {
-				glog.Error(err)
-				continue
-			}
+				numas, err := hw.GetNUMANodes(id)
+				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
+				if err != nil {
+					glog.Error(err)
+					continue
+				}
 
-			if len(numas) == 0 {
-				glog.Errorf("No NUMA for GPU ID: %s", id)
-				continue
-			}
+				if len(numas) == 0 {
+					glog.Errorf("No NUMA for GPU ID: %s", id)
+					continue
+				}
 
-			numaNodes := make([]*pluginapi.NUMANode, len(numas))
-			for j, v := range numas {
-				numaNodes[j] = &pluginapi.NUMANode{
-					ID: int64(v),
+				numaNodes := make([]*pluginapi.NUMANode, len(numas))
+				for j, v := range numas {
+					numaNodes[j] = &pluginapi.NUMANode{
+						ID: int64(v),
+					}
+				}
+
+				dev.Topology = &pluginapi.TopologyInfo{
+					Nodes: numaNodes,
 				}
 			}
+		}()
+		s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+	} else {
+		func() {
+			var hw hwloc.Hwloc
+			hw.Init()
+			defer hw.Destroy()
+			// Iterate through deviceCountMap and create empty lists for each partitionType whose count is > 0 with variable name same as partitionType
+			for id, device := range p.AMDGPUs {
+				dev := &pluginapi.Device{
+					ID:     id,
+					Health: pluginapi.Healthy,
+				}
+				// Append a device belonging to a certain partition type to its respective list
+				partitionType := device["computePartition"].(string) + "_" + device["memoryPartition"].(string)
+				partitionTypeDevs[partitionType] = append(partitionTypeDevs[partitionType], dev)
 
-			dev.Topology = &pluginapi.TopologyInfo{
-				Nodes: numaNodes,
+				numas, err := hw.GetNUMANodes(id)
+				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
+				if err != nil {
+					glog.Error(err)
+					continue
+				}
+
+				if len(numas) == 0 {
+					glog.Errorf("No NUMA for GPU ID: %s", id)
+					continue
+				}
+
+				numaNodes := make([]*pluginapi.NUMANode, len(numas))
+				for j, v := range numas {
+					numaNodes[j] = &pluginapi.NUMANode{
+						ID: int64(v),
+					}
+				}
+
+				dev.Topology = &pluginapi.TopologyInfo{
+					Nodes: numaNodes,
+				}
 			}
+		}()
+		// Send the appropriate list of devices based on the partitionType
+		if devList, exists := partitionTypeDevs[p.Resource]; exists {
+			s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
 		}
-	}()
-
-	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+	}
 
 	loop:
 	for {
@@ -190,9 +240,18 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 			}
 
 			// update with per device GPU health status
-			exporter.PopulatePerGPUDHealth(devs, health)
+			if isHomogeneous {
+				exporter.PopulatePerGPUDHealth(devs, health)
+				if p.Resource == "gpu" {
+					s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+				}
+			} else {
+				if devList, exists := partitionTypeDevs[p.Resource]; exists {
+					exporter.PopulatePerGPUDHealth(devList, health)
+					s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
+				}
+			}
 
-			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 		case <-p.signal:
 			glog.Infof("Received signal, exiting")
 			break loop
@@ -235,6 +294,10 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 			glog.Infof("Allocating device ID: %s", id)
 
 			for k, v := range p.AMDGPUs[id] {
+				// Map struct previously only had 'card' and 'renderD' and only those are paths to be appended as before
+				if k != "card" && k != "renderD" {
+					continue
+				}
 				devpath := fmt.Sprintf("/dev/dri/%s%d", k, v)
 				dev = new(pluginapi.DeviceSpec)
 				dev.HostPath = devpath
@@ -289,5 +352,6 @@ func (l *AMDGPULister) Discover(pluginListCh chan dpm.PluginNameList) {
 func (l *AMDGPULister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 	return &AMDGPUPlugin{
 		Heartbeat: l.Heartbeat,
+		Resource:  resourceLastName,
 	}
 }
