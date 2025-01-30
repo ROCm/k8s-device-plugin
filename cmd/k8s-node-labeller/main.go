@@ -174,6 +174,9 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 				continue
 			}
 			prodName := replacer.Replace(strings.TrimSpace(string(b)))
+			if prodName == "" {
+				continue
+			}
 			counts[prodName]++
 		}
 
