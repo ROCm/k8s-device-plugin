@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM docker.io/golang:1.23.4-alpine3.21
+FROM docker.io/golang:1.23.6-alpine3.21
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
 RUN mkdir -p /go/src/github.com/ROCm/k8s-device-plugin
 ADD . /go/src/github.com/ROCm/k8s-device-plugin
