@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	github.com/go-logr/logr v1.4.2
-	github.com/golang/glog v1.2.2
+	github.com/golang/glog v1.2.4
 	github.com/kubevirt/device-plugin-manager v1.19.5
 	golang.org/x/net v0.33.0
 	k8s.io/api v0.31.0
