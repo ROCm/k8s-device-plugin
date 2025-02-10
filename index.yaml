@@ -2,6 +2,33 @@ apiVersion: v1
 entries:
   amd-gpu:
   - apiVersion: v2
+    appVersion: 1.31.0.4
+    created: "2025-02-10T22:14:13.515754893Z"
+    dependencies:
+    - condition: nfd.enabled
+      name: node-feature-discovery
+      repository: https://kubernetes-sigs.github.io/node-feature-discovery/charts
+      version: '>= 0.8.1-0'
+    description: A Helm chart for deploying Kubernetes AMD GPU device plugin
+    digest: 4dc38153cab4ddcc024cd9ff1fff8f13aa1402de1f24ee52980a1e57cf6b0d68
+    home: https://github.com/ROCm/k8s-device-plugin
+    icon: https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/helm/logo.png
+    keywords:
+    - kubernetes
+    - cluster
+    - hardware
+    - gpu
+    kubeVersion: '>= 1.18.0-0'
+    maintainers:
+    - name: Kenny Ho <Kenny.Ho@amd.com>
+    name: amd-gpu
+    sources:
+    - https://github.com/ROCm/k8s-device-plugin
+    type: application
+    urls:
+    - https://github.com/ROCm/k8s-device-plugin/releases/download/amd-gpu-helm-0.18.0/amd-gpu-0.18.0.tgz
+    version: 0.18.0
+  - apiVersion: v2
     appVersion: 1.31.0.3
     created: "2025-02-05T03:28:04.818083734Z"
     dependencies:
@@ -447,4 +474,4 @@ entries:
     urls:
     - https://github.com/RadeonOpenCompute/k8s-device-plugin/releases/download/amd-gpu-helm-0.1.0/amd-gpu-0.1.0.tgz
     version: 0.1.0
-generated: "2025-02-05T03:28:04.818176026Z"
+generated: "2025-02-10T22:14:13.515921224Z"
