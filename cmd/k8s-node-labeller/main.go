@@ -308,6 +308,8 @@ var labelProperties = make(map[string]*bool, len(labelGenerators))
 func generatePartitionLabels() map[string]string {
 	_, deviceCountMap := amdgpu.GetAMDGPUs()
 	isHomogeneous := amdgpu.IsHomogeneous()
+	IsComputePartitionSupported := amdgpu.IsComputePartitionSupported()
+	IsMemoryPartitionSupported := amdgpu.IsMemoryPartitionSupported()
 
 	labels := make(map[string]string)
 
@@ -319,6 +321,18 @@ func generatePartitionLabels() map[string]string {
 				break
 			}
 		}
+	}
+
+	if IsComputePartitionSupported {
+		labels["amd.com/compute-partitioning-supported"] = "true"
+	} else {
+		labels["amd.com/compute-partitioning-supported"] = "false"
+	}
+
+	if IsMemoryPartitionSupported {
+		labels["amd.com/memory-partitioning-supported"] = "true"
+	} else {
+		labels["amd.com/memory-partitioning-supported"] = "false"
 	}
 
 	return labels

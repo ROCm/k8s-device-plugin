@@ -249,6 +249,41 @@ func IsHomogeneous() bool {
 	return true
 }
 
+func IsComputePartitionSupported() bool {
+	// Finding GPU paths using the same way its done in other functions like GetAMDGPUs()
+	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
+	if len(matches) == 0 {
+		return false
+	}
+	// Check any one GPU to see if it supports partition (All GPU's are of same model on the node)
+	path := matches[0]
+	computePartitionFile := filepath.Join(path, "available_compute_partition")
+
+	if _, err := os.Stat(computePartitionFile); err != nil {
+		return false
+	}
+
+	// If file exists, then compute partition is supported
+	return true
+}
+
+func IsMemoryPartitionSupported() bool {
+	// Finding GPU paths using the same way its done in other functions like GetAMDGPUs()
+	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
+	if len(matches) == 0 {
+		return false
+	}
+	// Check any one GPU to see if it supports partition (All GPU's are of same model on the node)
+	path := matches[0]
+	memoryPartitionFile := filepath.Join(path, "available_memory_partition")
+
+	if _, err := os.Stat(memoryPartitionFile); err != nil {
+		return false
+	}
+	// If file exists, then memory partition is supported
+	return true
+}
+
 // AMDGPU check if a particular card is an AMD GPU by checking the device's vendor ID
 func AMDGPU(cardName string) bool {
 	sysfsVendorPath := "/sys/class/drm/" + cardName + "/device/vendor"
