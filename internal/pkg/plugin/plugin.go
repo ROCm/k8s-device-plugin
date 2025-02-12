@@ -141,7 +141,7 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 	var isHomogeneous bool
 	isHomogeneous = amdgpu.IsHomogeneous()
 	// Initialize a map to store partitionType based device list
-	partitionTypeDevs := make(map[string][]*pluginapi.Device)
+	resourceTypeDevs := make(map[string][]*pluginapi.Device)
 
 	if isHomogeneous {
 		// limit scope for hwloc
@@ -197,7 +197,7 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 				}
 				// Append a device belonging to a certain partition type to its respective list
 				partitionType := device["computePartition"].(string) + "_" + device["memoryPartition"].(string)
-				partitionTypeDevs[partitionType] = append(partitionTypeDevs[partitionType], dev)
+				resourceTypeDevs[partitionType] = append(resourceTypeDevs[partitionType], dev)
 
 				numas, err := hw.GetNUMANodes(id)
 				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
@@ -224,7 +224,7 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 			}
 		}()
 		// Send the appropriate list of devices based on the partitionType
-		if devList, exists := partitionTypeDevs[p.Resource]; exists {
+		if devList, exists := resourceTypeDevs[p.Resource]; exists {
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
 		}
 	}
@@ -246,7 +246,7 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 					s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 				}
 			} else {
-				if devList, exists := partitionTypeDevs[p.Resource]; exists {
+				if devList, exists := resourceTypeDevs[p.Resource]; exists {
 					exporter.PopulatePerGPUDHealth(devList, health)
 					s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
 				}

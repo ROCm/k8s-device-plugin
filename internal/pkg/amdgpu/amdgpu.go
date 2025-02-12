@@ -124,7 +124,6 @@ func GetAMDGPUs() (map[string]map[string]interface{}, map[string]int) {
 			computePartition = strings.ToLower(strings.TrimSpace(string(data)))
 		} else {
 			glog.Warningf("Failed to read 'current_compute_partition' file at %s: %s", computePartitionFile, err)
-			continue
 		}
 
 		// Read the memory partition
@@ -132,10 +131,11 @@ func GetAMDGPUs() (map[string]map[string]interface{}, map[string]int) {
 			memoryPartition = strings.ToLower(strings.TrimSpace(string(data)))
 		} else {
 			glog.Warningf("Failed to read 'current_memory_partition' file at %s: %s", memoryPartitionFile, err)
-			continue
 		}
-		overallPartition := computePartition + "_" + memoryPartition
-		deviceCountMap[overallPartition]++
+		if computePartition != "" && memoryPartition != "" {
+			overallPartition := computePartition + "_" + memoryPartition
+			deviceCountMap[overallPartition]++
+		}
 
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
@@ -228,25 +228,9 @@ func GetAMDGPUs() (map[string]map[string]interface{}, map[string]int) {
 
 func IsHomogeneous() bool {
 	_, deviceCountMap := GetAMDGPUs()
-	var firstCount int
 
-	if len(deviceCountMap) == 0 {
-		return true
-	}
-
-	for _, count := range deviceCountMap {
-		firstCount = count
-		break
-	}
-
-	// Iterate through the deviceCountMap and check if all counts are the same
-	for _, count := range deviceCountMap {
-		if count != firstCount {
-			return false
-		}
-	}
-
-	return true
+	// Homogeneous if the map is empty or contains exactly one partition type
+	return len(deviceCountMap) <= 1
 }
 
 func IsComputePartitionSupported() bool {
