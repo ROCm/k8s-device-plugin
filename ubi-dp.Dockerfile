@@ -30,6 +30,7 @@ WORKDIR /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-device-plugin
 RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/ROCm/k8s-device-plugin/ describe --always --long --dirty)"
 
+
 FROM registry.access.redhat.com/ubi9/ubi-init:9.4
 LABEL \
     org.opencontainers.image.source="https://github.com/ROCm/k8s-device-plugin" \
@@ -47,4 +48,4 @@ RUN mkdir -p /licenses && \
 ADD ./LICENSE /licenses/LICENSE
 WORKDIR /root/
 COPY --from=builder /go/bin/k8s-device-plugin .
-CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
+CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5", "-pulse=30"]

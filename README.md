@@ -82,6 +82,10 @@ or
 kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml
 ```
 
+# Health per GPU
+* Extends more granular health detection per GPU using the exporter health
+  service over grpc socket service mounted on /var/lib/amd-metrics-exporter/
+
 ## Notes
 
 * This plugin uses [`go modules`][gm] for dependencies management

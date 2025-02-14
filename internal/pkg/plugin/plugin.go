@@ -33,6 +33,7 @@ import (
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
 	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/exporter"
 )
 
 // Plugin is identical to DevicePluginServer interface of device plugin API.
@@ -184,15 +185,13 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 		case <-p.Heartbeat:
 			var health = pluginapi.Unhealthy
 
-			// TODO there are no per device health check currently
-			// TODO all devices on a node is used together by kfd
 			if simpleHealthCheck() {
 				health = pluginapi.Healthy
 			}
 
-			for i := 0; i < len(p.AMDGPUs); i++ {
-				devs[i].Health = health
-			}
+			// update with per device GPU health status
+			exporter.PopulatePerGPUDHealth(devs, health)
+
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 		case <-p.signal:
 			glog.Infof("Received signal, exiting")
