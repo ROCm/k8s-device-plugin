@@ -23,6 +23,7 @@ import (
     "fmt"
     "os"
     "strings"
+    "time"
     "github.com/ROCm/k8s-device-plugin/internal/pkg/exporter/metricssvc"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
@@ -33,6 +34,7 @@ import (
 
 const (
     healthSocket = "/var/lib/amd-metrics-exporter/amdgpu_device_metrics_exporter_grpc.socket"
+    queryTimeout    = 5 * time.Second
 )
 
 // getGPUHealth returns device id map with health state if the metrics service
@@ -61,7 +63,10 @@ func getGPUHealth() (hMap map[string]string, err error) {
 
     defer conn.Close()
 
-    resp, err := client.List(context.Background(), &emptypb.Empty{})
+    ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+    defer cancel()
+
+    resp, err := client.List(ctx, &emptypb.Empty{})
     if err != nil {
         glog.Errorf("Error getting health info svc : %v", err)
         return

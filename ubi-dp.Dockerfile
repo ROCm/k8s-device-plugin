@@ -48,4 +48,4 @@ RUN mkdir -p /licenses && \
 ADD ./LICENSE /licenses/LICENSE
 WORKDIR /root/
 COPY --from=builder /go/bin/k8s-device-plugin .
-CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5", "-pulse=30"]
+CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
