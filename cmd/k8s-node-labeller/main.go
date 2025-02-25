@@ -284,7 +284,7 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 			}
 		}
 
-		return createLabels("simd-count", counts)
+		return createLabels("cu-count", counts)
 	},
 }
 
