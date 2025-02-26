@@ -186,25 +186,40 @@ var labelGenerators = map[string]func(map[string]map[string]int) map[string]stri
 		const bytePerMB = int64(1024 * 1024)
 		counts := map[string]int{}
 
+		propertiesPath := "/sys/class/kfd/kfd/topology/nodes/*/properties"
+		var files []string
+		var err error
+
+		if files, err = filepath.Glob(propertiesPath); err != nil || len(files) == 0 {
+			log.Error(err, "Fail to glob topology properties")
+			return map[string]string{}
+		}
+
 		for _, gpu := range gpus {
-			// /sys/class/drm/card<card #>/device/mem_info_vram_total
-			// size_in_bytes
-			vramTotalPath := fmt.Sprintf("/sys/class/drm/card%d/device/mem_info_vram_total", gpu["card"])
+			// /sys/class/kfd/kfd/topology/nodes/*/properties
 
-			b, err := ioutil.ReadFile(vramTotalPath)
-			if err != nil {
-				log.Error(err, vramTotalPath)
-				continue
-			}
-			vSize, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)
-			if err != nil {
-				log.Error(err, "Error parsing size")
-				continue
-			}
+			for _, file := range files {
+				render_minor, _ := amdgpu.ParseTopologyProperties(file, reDrmRenderMinor)
 
-			tmp := vSize / bytePerMB
-			s := int(math.Round(float64(tmp) / 1024))
-			counts[fmt.Sprintf("%dG", s)]++
+				if int(render_minor) != gpu["renderD"] {
+					continue
+				}
+				parts := strings.Split(file, "/")
+				nodeNumber := parts[len(parts)-2]
+
+				vramTotalPath := fmt.Sprintf("/sys/class/kfd/kfd/topology/nodes/%s/mem_banks/0/properties", nodeNumber)
+
+				vSize, err := amdgpu.ParseTopologyProperties(vramTotalPath, reSizeInBytes)
+				if err != nil {
+					log.Error(err, vramTotalPath)
+					continue
+				}
+
+				tmp := vSize / bytePerMB
+				s := int(math.Round(float64(tmp) / 1024))
+				counts[fmt.Sprintf("%dG", s)]++
+				break
+			}
 		}
 
 		return createLabels("vram", counts)
