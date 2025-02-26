@@ -8,13 +8,13 @@ dp:
   image:
     repository: docker.io/rocm/k8s-device-plugin
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "1.31.0.4"
+    tag: "1.31.0.6"
   resources: {}
 
 lbl:
   image:
     repository: docker.io/rocm/k8s-device-plugin
-    tag: "labeller-1.31.0.4"
+    tag: "labeller-1.31.0.6"
   serviceAccount:
     annotations: {}
   securityContext:
