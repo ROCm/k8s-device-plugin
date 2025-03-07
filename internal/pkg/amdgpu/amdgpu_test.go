@@ -28,7 +28,7 @@ import (
 )
 
 func hasAMDGPU(t *testing.T) bool {
-	devices := GetAMDGPUs()
+	devices, _ := GetAMDGPUs()
 
 	if len(devices) <= 0 {
 		return false
@@ -41,7 +41,7 @@ func TestFirmwareVersionConsistent(t *testing.T) {
 		t.Skip("Skipping test, no AMD GPU found.")
 	}
 
-	devices := GetAMDGPUs()
+	devices, _ := GetAMDGPUs()
 
 	for pci, dev := range devices {
 		card := fmt.Sprintf("card%d", dev["card"])
@@ -73,7 +73,7 @@ func TestAMDGPUcountConsistent(t *testing.T) {
 		t.Skip("Skipping test, no AMD GPU found.")
 	}
 
-	devices := GetAMDGPUs()
+	devices, _ := GetAMDGPUs()
 
 	matches, _ := filepath.Glob("/sys/class/drm/card[0-9]*/device/vendor")
 
@@ -109,7 +109,7 @@ func TestDevFunctional(t *testing.T) {
 		t.Skip("Skipping test, no AMD GPU found.")
 	}
 
-	devices := GetAMDGPUs()
+	devices, _ := GetAMDGPUs()
 
 	for _, dev := range devices {
 		card := fmt.Sprintf("card%d", dev["card"])
