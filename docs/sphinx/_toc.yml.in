@@ -8,11 +8,6 @@ subtrees:
   - file: user-guide/installation
   - file: user-guide/configuration
   - file: user-guide/examples
-- caption: Advanced
-  entries:
-  - file: advanced/health-checks
-  - file: advanced/monitoring
-  - file: advanced/node-labelling
 - caption: Contributing
   entries:
   - file: contributing/development
