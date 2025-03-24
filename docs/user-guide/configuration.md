@@ -8,10 +8,18 @@ The device plugin can be configured using the following environment variables:
 
 | Environment Variable | Type | Default | Description |
 |-----|------|---------|-------------|
-| `DP_DISABLE_HEALTHCHECK` | Boolean | `false` | Disables the GPU health checking feature when set to any value |
-| `DP_HEALTHCHECK_INTERVAL` | Integer | `60` | Interval in seconds between GPU health checks |
 | `AMD_GPU_DEVICE_COUNT` | Integer | Auto-detected | Number of AMD GPUs available on the node |
-| `AMD_GPU_HEALTH_CHECK` | Boolean | `false` | Enables or disables the health check feature |
+
+### Why Limit GPU Exposure?
+
+There are several reasons an administrator might want to limit the number of GPUs exposed to Kubernetes:
+
+1. **Resource Partitioning**: Reserve some GPUs for non-Kubernetes workloads running on the same node
+2. **Testing and Development**: Test applications with restricted GPU access before deploying to production
+3. **Mixed Workload Management**: Allocate specific GPUs to different teams or applications based on priority
+4. **High Availability**: Keep backup GPUs available for failover scenarios
+
+Setting `AMD_GPU_DEVICE_COUNT` to a value lower than the physical count ensures only a subset of GPUs are made available as Kubernetes resources.
 
 ## Command-Line Flags
 
@@ -20,8 +28,7 @@ The device plugin supports the following command-line flags:
 | Flag | Default | Description |
 |-----|------|-------------|
 | `--kubelet-url` | `http://localhost:10250` | The URL of the kubelet for device plugin registration |
-| `--health-port` | `8080` | The port on which the health check service will listen |
-| `--health-check-interval` | `30` | The interval at which health checks are performed (seconds) |
+| `--pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
 
 ## Configuration File
 
@@ -30,72 +37,149 @@ You can also provide a configuration file in YAML format to customize the plugin
 ```yaml
 gpu:
   device_count: 2
-  health_check: true
-  health_check_interval: 30
 ```
 
-## Volume Mounts
+### Using the Configuration File
 
-The device plugin requires certain volume mounts to function properly:
+To use the configuration file:
+
+1. Create a YAML file with your desired settings (like the example above)
+2. Mount this file into the device plugin container
+
+Example deployment snippet:
+
+```yaml
+containers:
+- image: rocm/k8s-device-plugin
+  name: amdgpu-dp-cntr
+  env:
+  - name: CONFIG_FILE_PATH
+    value: "/etc/amdgpu/config.yaml"
+  volumeMounts:
+  - name: config-volume
+    mountPath: /etc/amdgpu
+volumes:
+- name: config-volume
+  configMap:
+    name: amdgpu-device-plugin-config
+```
+
+With a corresponding ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amdgpu-device-plugin-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    gpu:
+      device_count: 2
+```
+
+### Essential Volume Mounts
+
+These mounts are required for basic functionality:
+
+| Mount Path | Purpose |
+|------------|---------|
+| `/var/lib/kubelet/device-plugins` | Required for device plugin registration with the Kubernetes kubelet |
+| `/sys` | Required for GPU detection and topology information |
 
 ### Device Mounts
 
-The plugin needs access to the host's device files, typically mounted at:
+For GPU functionality, these device files must be accessible:
 
-- `/dev/kfd`
-- `/dev/dri`
+| Mount Path | Purpose |
+|------------|---------|
+| `/dev/kfd` | Kernel Fusion Driver interface, required for GPU compute workloads |
+| `/dev/dri` | Direct Rendering Infrastructure, required for GPU access |
 
-### Kubelet Socket
+## Example Deployments
 
-The plugin needs access to the kubelet's device plugin socket, typically mounted at:
+The repository contains example deployment configurations for different use cases.
 
-`/var/lib/kubelet/device-plugins`
+### Basic Device Plugin (k8s-ds-amdgpu-dp.yaml)
 
-## Example DaemonSet Configuration
+A minimal deployment that exposes AMD GPUs to Kubernetes:
 
-Below is an example of the device plugin DaemonSet configuration:
+- Includes only the essential volume mounts
+- Uses minimal security context settings
+- Suitable for basic GPU workloads
 
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: amdgpu-device-plugin-daemonset
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      name: amdgpu-dp-ds
-  template:
-    metadata:
-      labels:
-        name: amdgpu-dp-ds
-    spec:
-      containers:
-      - name: amdgpu-dp-cntr
-        image: rocm/k8s-device-plugin:latest
-        env:
-        - name: DP_DISABLE_HEALTHCHECK
-          value: "false"
-        - name: DP_HEALTHCHECK_INTERVAL
-          value: "60"
-        volumeMounts:
-        - name: dev
-          mountPath: /dev
-        - name: dp
-          mountPath: /var/lib/kubelet/device-plugins
-      volumes:
-      - name: dev
-        hostPath:
-          path: /dev
-      - name: dp
-        hostPath:
-          path: /var/lib/kubelet/device-plugins
-```
+[Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml)
+
+### Enhanced Device Plugin (k8s-ds-amdgpu-dp-health.yaml)
+
+A more comprehensive deployment of the device plugin that includes additional volume mounts and privileged access for advanced features. This configuration includes:
+
+- Additional volume mounts for `kfd` and `dri` devices
+- A dedicated mount for metrics data
+- Privileged execution context for direct hardware access
+
+[Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp-health.yaml)
+
+### Node Labeller (k8s-ds-amdgpu-labeller.yaml)
+
+Deploys the AMD GPU node labeller, which adds detailed GPU information as node labels:
+
+- Requires access to `/sys` and `/dev` to gather GPU hardware information
+- Creates Kubernetes node labels with details like VRAM size, compute units, etc.
+- Helps with GPU-specific workload scheduling
+
+The node labeller can expose labels such as:
+
+- `amd.com/gpu.vram`: GPU memory size
+- `amd.com/gpu.cu-count`: Number of compute units
+- `amd.com/gpu.device-id`: Device ID of the GPU
+- `amd.com/gpu.family`: GPU family/architecture
+- `amd.com/gpu.product-name`: Product name of the GPU
+- And others based on the passed arguments
+
+[Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml)
 
 ## Resource Naming
 
-The device plugin advertises AMD GPUs as the `amd.com/gpu` resource type. Pods can request this resource in their specifications to access AMD GPUs.
+The device plugin advertises AMD GPUs as the `amd.com/gpu` resource type. Pods can request this resource in their specifications to access AMD GPUs:
 
-## Node Labeling
+```yaml
+resources:
+  limits:
+    amd.com/gpu: 1
+```
 
-When the device plugin runs on a node with AMD GPUs, it automatically advertises the available GPU resources. No additional node labeling is required.
+## Security and Access Control
+
+### Non-Privileged GPU Access
+
+For secure workloads, it's recommended to run containers in non-privileged mode while still allowing GPU access. Based on testing with AMD ROCm containers, the following configuration provides reliable non-privileged GPU access:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+spec:
+  hostIPC: true
+  containers:
+  - name: gpu-container
+    image: rocm/pytorch:latest
+    resources:
+      limits:
+        amd.com/gpu: 1
+    securityContext:
+      # Run as non-privileged container
+      privileged: false
+      # Prevent privilege escalation
+      allowPrivilegeEscalation: false
+      # Allow necessary syscalls for GPU operations
+      seccompProfile:
+        type: Unconfined
+```
+
+#### Key Security Elements
+
+- `privileged: false`: Ensures the container doesn't run with full host privileges
+- `allowPrivilegeEscalation: false`: Prevents the process from gaining additional privileges
+- `seccompProfile.type: Unconfined`: Allows necessary system calls for GPU operations
