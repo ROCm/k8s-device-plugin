@@ -124,6 +124,7 @@ After deployment, nodes with AMD GPUs will be automatically labeled with propert
 - Firmware and Feature Versions
 
 The labels are added with two prefixes:
+
 - `amd.com/gpu.*` - Current prefix
 - `beta.amd.com/gpu.*` - Legacy prefix (maintained for backwards compatibility)
 
@@ -141,7 +142,8 @@ kubectl get nodes --show-labels | grep "beta.amd.com/gpu"
 ```
 
 Example labels for an AMD MI300X GPU:
-```
+
+```text
 amd.com/gpu.cu-count=304
 amd.com/gpu.device-id=74a1
 amd.com/gpu.family=AI
