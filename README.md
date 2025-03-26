@@ -1,10 +1,12 @@
-# AMD GPU device plugin for Kubernetes
+# AMD GPU Device Plugin for Kubernetes
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/ROCm/k8s-device-plugin)](https://goreportcard.com/report/github.com/ROCm/k8s-device-plugin)
 
 ## Introduction
 
 This is a [Kubernetes][k8s] [device plugin][dp] implementation that enables the registration of AMD GPU in a container cluster for compute workload.  With the appropriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU.
+
+This plugin is required by tools such as the [AMD GPU Operator](https://github.com/ROCm/gpu-operator) to expose AMD GPUs as schedulable resources.
 
 More information about [ROCm][rocm].
 
@@ -24,13 +26,13 @@ More information about [ROCm][rocm].
 
 The device plugin needs to be run on all the nodes that are equipped with AMD GPU.  The simplest way of doing so is to create a Kubernetes [DaemonSet][ds], which runs a copy of a pod on all (or some) Nodes in the cluster.  We have a pre-built Docker image on [DockerHub][dhk8samdgpudp] that you can use for your DaemonSet.  This repository also has a pre-defined yaml file named `k8s-ds-amdgpu-dp.yaml`.  You can create a DaemonSet in your Kubernetes cluster by running this command:
 
-```
+```bash
 kubectl create -f k8s-ds-amdgpu-dp.yaml
 ```
 
 or directly pull from the web using
 
-```
+```bash
 kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml
 ```
 
@@ -44,25 +46,25 @@ If you want to deploy this device plugin using Helm, a [Helm Chart][helmamdgpu] 
 
 You can restrict workloads to a node with a GPU by adding `resources.limits` to the pod definition.  An example pod definition is provided in `example/pod/alexnet-gpu.yaml`.  This pod runs the timing benchmark for AlexNet on AMD GPU and then goes to sleep. You can create the pod by running:
 
-```
+```bash
 kubectl create -f alexnet-gpu.yaml
 ```
 
 or
-
+bash
 ```
 kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/example/pod/alexnet-gpu.yaml
 ```
 
 and then check the pod status by running
 
-```
+```bash
 kubectl describe pods
 ```
 
 After the pod is created and running, you can see the benchmark result by running:
 
-```
+```bash
 kubectl logs alexnet-tf-gpu-pod alexnet-tf-gpu-container
 ```
 
@@ -72,17 +74,18 @@ For comparison, an example pod definition of running the same benchmark with CPU
 
 Please see [AMD GPU Kubernetes Node Labeller](cmd/k8s-node-labeller/README.md) for details.  An example configuration is in [k8s-ds-amdgpu-labeller.yaml](k8s-ds-amdgpu-labeller.yaml):
 
-```
+```bash
 kubectl create -f k8s-ds-amdgpu-labeller.yaml
 ```
 
 or
 
-```
+```bash
 kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml
 ```
 
 # Health per GPU
+
 * Extends more granular health detection per GPU using the exporter health
   service over grpc socket service mounted on /var/lib/amd-metrics-exporter/
 

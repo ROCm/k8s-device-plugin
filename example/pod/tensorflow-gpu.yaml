@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rocm-test-pod
+spec:
+  containers:
+  - name: rocm-test-container
+    image: rocm/tensorflow:latest
+    command: ["sh", "-c", "rocm-smi && python3 -c 'import tensorflow as tf; print(\"Num GPUs Available: \", len(tf.config.list_physical_devices(\"GPU\")))'; sleep 3600"]
+    resources:
+      limits:
+        amd.com/gpu: 1
+  restartPolicy: Never

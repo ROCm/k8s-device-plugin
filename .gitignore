@@ -34,3 +34,9 @@ tags
 helm/**/charts
 helm/**/Chart.lock
 helm/**/requirements.lock
+
+# Python
+.venv/
+
+# documentation artifacts
+_build/
