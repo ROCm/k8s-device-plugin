@@ -104,14 +104,50 @@ func countGPUDevFromTopology(topoRootParam ...string) int {
 }
 
 func simpleHealthCheck() bool {
-	var kfd *os.File
-	var err error
-	if kfd, err = os.Open("/dev/kfd"); err != nil {
-		glog.Error("Error opening /dev/kfd")
-		return false
-	}
-	kfd.Close()
-	return true
+    entries, err := filepath.Glob("/sys/class/kfd/kfd/topology/nodes/*/properties")
+    if err != nil {
+        glog.Errorf("Error finding properties files: %v", err)
+        return false
+    }
+
+    for _, propFile := range entries {
+        f, err := os.Open(propFile)
+        if err != nil {
+            glog.Errorf("Error opening %s: %v", propFile, err)
+            continue
+        }
+        defer f.Close()
+
+        var cpuCores, gfxVersion int
+        scanner := bufio.NewScanner(f)
+        for scanner.Scan() {
+            line := scanner.Text()
+            if strings.HasPrefix(line, "cpu_cores_count") {
+                parts := strings.Fields(line)
+                if len(parts) == 2 {
+                    cpuCores, _ = strconv.Atoi(parts[1])
+                }
+            } else if strings.HasPrefix(line, "gfx_target_version") {
+                parts := strings.Fields(line)
+                if len(parts) == 2 {
+                    gfxVersion, _ = strconv.Atoi(parts[1])
+                }
+            }
+        }
+
+        if err := scanner.Err(); err != nil {
+            glog.Warningf("Error scanning %s: %v", propFile, err)
+            continue
+        }
+
+        if cpuCores == 0 && gfxVersion > 0 {
+            // Found a GPU
+            return true
+        }
+    }
+
+    glog.Warning("No GPU nodes found via properties")
+    return false
 }
 
 // GetDevicePluginOptions returns options to be communicated with Device
