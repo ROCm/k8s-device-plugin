@@ -93,7 +93,7 @@ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/maste
 
 ## TODOs
 
-* Add proper GPU health check (health check without `/dev/kfd` access.)
+* ~~Add proper GPU health check (health check without `/dev/kfd` access.)~~
 
 [artifacthub]: https://artifacthub.io/packages/helm/amd-gpu-helm/amd-gpu
 [ds]: https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
