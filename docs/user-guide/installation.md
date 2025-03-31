@@ -258,9 +258,7 @@ amd.com/gpu.simd-count=1216
 amd.com/gpu.vram=192G
 ```
 
-### Step 3: Verify the Installation
-
-After deploying the DaemonSet, verify that the device plugin is running correctly:
+### Verify the Device Plugin Installation
 
 Check the status of the pods:
 
