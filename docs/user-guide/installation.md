@@ -106,76 +106,7 @@ The AMD GPU Operator provides a comprehensive solution that installs and manages
 - Device metrics exporter
 - Driver installation and updates
 
-#### Step 1: Install Cert-Manager
-
-The AMD GPU Operator requires cert-manager for TLS certificate management:
-
-```bash
-helm repo add jetstack https://charts.jetstack.io --force-update
-
-helm install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --version v1.15.1 \
-  --set crds.enabled=true
-```
-
-#### Step 2: Install the GPU Operator
-
-Add the AMD Helm repository:
-
-```bash
-helm repo add rocm https://rocm.github.io/gpu-operator
-helm repo update
-```
-
-Install the operator:
-
-```bash
-helm install amd-gpu-operator rocm/gpu-operator-charts \
-  --namespace kube-amd-gpu \
-  --create-namespace
-```
-
-#### Step 3: Create a DeviceConfig Custom Resource
-
-After the operator is installed, create a `DeviceConfig` custom resource to configure the cluster's GPU resources. Create a file named `deviceconfig.yaml`:
-
-```yaml
-apiVersion: amd.com/v1alpha1
-kind: DeviceConfig
-metadata:
-  name: cluster-device-config
-  namespace: kube-amd-gpu
-spec:
-  # For using pre-installed drivers
-  driver:
-    enable: false
-
-  # Configure device plugin
-  devicePlugin:
-    devicePluginImage: rocm/k8s-device-plugin:latest
-    nodeLabellerImage: rocm/k8s-device-plugin:labeller-latest
-        
-  # Configure metrics exporter
-  metricsExporter:
-     enable: true
-     serviceType: "NodePort"
-     nodePort: 32500
-     image: docker.io/rocm/device-metrics-exporter:v1.2.0
-
-  # Select nodes with AMD GPUs
-  selector:
-    feature.node.kubernetes.io/amd-gpu: "true"
-```
-
-Deploy the custom resource:
-
-```bash
-kubectl apply -f deviceconfig.yaml
-```
-
-See the [GPU Operator Documentation](https://instinct.docs.amd.com/projects/gpu-operator/en/latest/) for additional information.
+See the [GPU Operator Documentation](https://instinct.docs.amd.com/projects/gpu-operator/en/latest/) for installation instructions and additional information.
 
 ### Install Node Labeler (Optional)
 
@@ -288,22 +219,4 @@ If you installed the device plugin with health checks (Option 2):
 kubectl delete -f k8s-ds-amdgpu-dp-health.yaml
 # Or using the web URL
 kubectl delete -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp-health.yaml
-```
-
-### Uninstalling the GPU Operator
-
-If you installed using the AMD GPU Operator (Option 3), uninstall it with:
-
-```bash
-# First delete the device config custom resource
-kubectl delete deviceconfig -n kube-amd-gpu --all
-
-# Wait for KMM modules to be unloaded
-kubectl get modules -n kube-amd-gpu
-
-# Uninstall the operator
-helm uninstall amd-gpu-operator -n kube-amd-gpu
-
-# Optionally uninstall cert-manager if no longer needed
-helm uninstall cert-manager -n cert-manager
 ```
