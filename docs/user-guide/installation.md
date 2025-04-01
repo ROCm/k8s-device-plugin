@@ -120,12 +120,6 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 ```
 
-Verify that cert-manager is installed correctly:
-
-```bash
-kubectl get pods -n cert-manager
-```
-
 #### Step 2: Install the GPU Operator
 
 Add the AMD Helm repository:
@@ -145,7 +139,7 @@ helm install amd-gpu-operator rocm/gpu-operator-charts \
 
 #### Step 3: Create a DeviceConfig Custom Resource
 
-After the operator is installed, create a DeviceConfig custom resource to configure the cluster's GPU resources. Create a file named `deviceconfig.yaml`:
+After the operator is installed, create a `DeviceConfig` custom resource to configure the cluster's GPU resources. Create a file named `deviceconfig.yaml`:
 
 ```yaml
 apiVersion: amd.com/v1alpha1
@@ -179,26 +173,6 @@ Deploy the custom resource:
 
 ```bash
 kubectl apply -f deviceconfig.yaml
-```
-
-#### Step 4: Verify the GPU Operator Installation
-
-Check that all operator components are running:
-
-```bash
-kubectl get pods -n kube-amd-gpu
-```
-
-Verify that nodes with AMD GPUs are properly labeled:
-
-```bash
-kubectl get nodes -L feature.node.kubernetes.io/amd-gpu
-```
-
-Verify that the AMD GPU resources are available:
-
-```bash
-kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:"status.capacity.amd\.com/gpu"
 ```
 
 See the [GPU Operator Documentation](https://instinct.docs.amd.com/projects/gpu-operator/en/latest/) for additional information.
@@ -300,7 +274,7 @@ Common issues include:
 
 To uninstall the device plugin, delete the DaemonSet using the same manifest file you used for installation:
 
-**If you installed the standard device plugin**:
+If you installed the standard device plugin (Option 1):
 
 ```bash
 kubectl delete -f k8s-ds-amdgpu-dp.yaml
@@ -308,7 +282,7 @@ kubectl delete -f k8s-ds-amdgpu-dp.yaml
 kubectl delete -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml
 ```
 
-**If you installed the device plugin with health checks**:
+If you installed the device plugin with health checks (Option 2):
 
 ```bash
 kubectl delete -f k8s-ds-amdgpu-dp-health.yaml
