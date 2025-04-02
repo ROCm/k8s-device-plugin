@@ -270,9 +270,7 @@ loop:
 			// update with per device GPU health status
 			if isHomogeneous {
 				exporter.PopulatePerGPUDHealth(devs, health)
-				if p.Resource == "gpu" {
-					s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
-				}
+				s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 			} else {
 				if devList, exists := resourceTypeDevs[p.Resource]; exists {
 					exporter.PopulatePerGPUDHealth(devList, health)
