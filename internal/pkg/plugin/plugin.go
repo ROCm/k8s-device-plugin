@@ -28,6 +28,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/allocator"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/exporter"
 	"github.com/golang/glog"
@@ -38,10 +39,38 @@ import (
 
 // Plugin is identical to DevicePluginServer interface of device plugin API.
 type AMDGPUPlugin struct {
-	AMDGPUs   map[string]map[string]interface{}
-	Heartbeat chan bool
-	signal    chan os.Signal
-	Resource  string
+	AMDGPUs      map[string]map[string]interface{}
+	Heartbeat    chan bool
+	signal       chan os.Signal
+	Resource     string
+	devAllocator allocator.Policy
+}
+
+type AMDGPUPluginOption func(*AMDGPUPlugin)
+
+func NewAMDGPUPlugin(options ...AMDGPUPluginOption) *AMDGPUPlugin {
+	amdGpuPlugin := &AMDGPUPlugin{}
+	for _, option := range options {
+		option(amdGpuPlugin)
+	}
+	return amdGpuPlugin
+}
+
+func WithAllocator(a allocator.Policy) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.devAllocator = a
+	}
+}
+
+func WithHeartbeat(ch chan bool) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.Heartbeat = ch
+	}
+}
+func WithResource(res string) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.Resource = res
+	}
 }
 
 // Start is an optional interface that could be implemented by plugin.
@@ -52,8 +81,31 @@ type AMDGPUPlugin struct {
 func (p *AMDGPUPlugin) Start() error {
 	p.signal = make(chan os.Signal, 1)
 	signal.Notify(p.signal, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-
+	err := p.devAllocator.Init(getDevices(), "")
+	if err != nil {
+		glog.Fatalf("allocator init failed with error %v. Exiting...", err)
+	}
 	return nil
+}
+
+func getDevices() []*allocator.Device {
+	devices := amdgpu.GetAMDGPUs()
+	var deviceList []*allocator.Device
+
+	for id, deviceData := range devices {
+		device := &allocator.Device{
+			Id:                   id,
+			Card:                 deviceData["card"].(int),
+			RenderD:              deviceData["renderD"].(int),
+			DevId:                deviceData["devID"].(string),
+			ComputePartitionType: deviceData["computePartitionType"].(string),
+			MemoryPartitionType:  deviceData["memoryPartitionType"].(string),
+			NodeId:               deviceData["nodeId"].(int),
+			NumaNode:             deviceData["numaNode"].(int),
+		}
+		deviceList = append(deviceList, device)
+	}
+	return deviceList
 }
 
 // Stop is an optional interface that could be implemented by plugin.
@@ -154,7 +206,9 @@ func simpleHealthCheck() bool {
 // GetDevicePluginOptions returns options to be communicated with Device
 // Manager
 func (p *AMDGPUPlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
-	return &pluginapi.DevicePluginOptions{}, nil
+	return &pluginapi.DevicePluginOptions{
+		GetPreferredAllocationAvailable: true,
+	}, nil
 }
 
 // PreStartContainer is expected to be called before each container start if indicated by plugin during registration phase.
@@ -239,7 +293,7 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 		}
 	}
 
-	loop:
+loop:
 	for {
 		select {
 		case <-p.Heartbeat:
@@ -252,9 +306,7 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 			// update with per device GPU health status
 			if isHomogeneous {
 				exporter.PopulatePerGPUDHealth(devs, health)
-				if p.Resource == "gpu" {
-					s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
-				}
+				s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 			} else {
 				if devList, exists := resourceTypeDevs[p.Resource]; exists {
 					exporter.PopulatePerGPUDHealth(devList, health)
@@ -277,8 +329,20 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 // guaranteed to be the allocation ultimately performed by the
 // devicemanager. It is only designed to help the devicemanager make a more
 // informed allocation decision when possible.
-func (p *AMDGPUPlugin) GetPreferredAllocation(context.Context, *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
-	return &pluginapi.PreferredAllocationResponse{}, nil
+func (p *AMDGPUPlugin) GetPreferredAllocation(ctx context.Context, req *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
+	response := &pluginapi.PreferredAllocationResponse{}
+	for _, req := range req.ContainerRequests {
+		allocated_ids, err := p.devAllocator.Allocate(req.AvailableDeviceIDs, req.MustIncludeDeviceIDs, int(req.AllocationSize))
+		if err != nil {
+			glog.Errorf("unable to get preferred allocation list. Error:%v", err)
+			return nil, fmt.Errorf("unable to get preferred allocation list. Error:%v", err)
+		}
+		resp := &pluginapi.ContainerPreferredAllocationResponse{
+			DeviceIDs: allocated_ids,
+		}
+		response.ContainerResponses = append(response.ContainerResponses, resp)
+	}
+	return response, nil
 }
 
 // Allocate is called during container creation so that the Device
@@ -360,8 +424,10 @@ func (l *AMDGPULister) Discover(pluginListCh chan dpm.PluginNameList) {
 // e.g. for resource name "color.example.com/red" that would be "red". It must return valid
 // implementation of a PluginInterface.
 func (l *AMDGPULister) NewPlugin(resourceLastName string) dpm.PluginInterface {
-	return &AMDGPUPlugin{
-		Heartbeat: l.Heartbeat,
-		Resource:  resourceLastName,
+	options := []AMDGPUPluginOption{
+		WithHeartbeat(l.Heartbeat),
+		WithResource(resourceLastName),
+		WithAllocator(allocator.NewBestEffortPolicy()),
 	}
+	return NewAMDGPUPlugin(options...)
 }
