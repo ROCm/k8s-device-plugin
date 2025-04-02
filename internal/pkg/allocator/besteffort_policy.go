@@ -19,7 +19,6 @@ package allocator
 import (
 	"fmt"
 	"math"
-	"sort"
 
 	"github.com/golang/glog"
 )
@@ -44,21 +43,25 @@ const (
 )
 
 type BestEffortPolicy struct {
-	devices    map[string]*Device
-	p2pWeights map[int]map[int]int
+	devices          []*Device
+	devicesMap       map[string]*Device
+	devicePartitions map[int]*DevicePartitions
+	p2pWeights       map[int]map[int]int
 }
 
 func NewBestEffortPolicy() *BestEffortPolicy {
 	return &BestEffortPolicy{
-		devices:    make(map[string]*Device),
-		p2pWeights: make(map[int]map[int]int),
+		devices:          make([]*Device, 0),
+		devicesMap:       make(map[string]*Device),
+		devicePartitions: make(map[int]*DevicePartitions),
+		p2pWeights:       make(map[int]map[int]int),
 	}
 }
 
 func (b *BestEffortPolicy) getDevicesFromIds(ids []string) []*Device {
 	var res []*Device
 	for _, id := range ids {
-		res = append(res, b.devices[id])
+		res = append(res, b.devicesMap[id])
 	}
 	return res
 }
@@ -67,8 +70,13 @@ func (b *BestEffortPolicy) getDevicesFromIds(ids []string) []*Device {
 func (b *BestEffortPolicy) Init(devs []*Device, topoDir string) error {
 	err := fetchAllPairWeights(devs, b.p2pWeights, topoDir)
 	if err == nil {
+		b.devices = devs
 		for idx := range devs {
-			b.devices[devs[idx].Id] = devs[idx]
+			b.devicesMap[devs[idx].Id] = devs[idx]
+		}
+		b.devicePartitions = groupPartitionsByDevId(devs)
+		for _, par := range b.devicePartitions {
+			glog.Infof("Device: %s Partitions: %v", par.ParentId, par.Devs)
 		}
 	}
 	return err
@@ -102,30 +110,23 @@ func (b *BestEffortPolicy) Allocate(availableIds, requiredIds []string, size int
 
 	if len(b.p2pWeights) == 0 {
 		return outset, fmt.Errorf(invalidInit)
-        }
+	}
+
+	if !setContainsAll(availableIds, requiredIds) {
+		return outset, fmt.Errorf(noCandidateFound)
+	}
 
 	available := b.getDevicesFromIds(availableIds)
 	required := b.getDevicesFromIds(requiredIds)
-	allSubsets, err := getAllDeviceSubsets(available, size, b.p2pWeights)
+	allSubsets, err := getCandidateDeviceSubsets(b.devicePartitions, b.devices, available, required, size, b.p2pWeights)
 
 	if err != nil {
 		return outset, err
 	}
 
-	var requiredNodeIds []int
-	for i := 0; i < len(required); i++ {
-		requiredNodeIds = append(requiredNodeIds, required[i].NodeId)
-	}
-	sort.Slice(requiredNodeIds, func(i, j int) bool {
-		return requiredNodeIds[i] < requiredNodeIds[j]
-	})
-
 	bestScore := math.MaxInt32
 	var candidate *DeviceSet
 	for _, subset := range allSubsets {
-		if !setContainsAll(subset.Ids, requiredNodeIds) {
-			continue
-		}
 		if subset.TotalWeight < bestScore {
 			candidate = subset
 			bestScore = subset.TotalWeight

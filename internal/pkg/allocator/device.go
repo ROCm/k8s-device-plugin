@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/golang/glog"
 )
@@ -66,9 +67,23 @@ type DeviceSet struct {
 	Ids         []int
 	TotalWeight int
 	LastIdx     int
+	Size        int
 }
 
-func setContainsAll(set []int, subset []int) bool {
+type DevicePartitions struct {
+	ParentId string
+	DevId    int
+	Ids      []int
+	Devs     []string
+}
+
+type DevicePartitionSet struct {
+	Ids              []int
+	TotalWeight      int
+	LastPartitionIdx int
+}
+
+func setContainsAll[K int | string](set, subset []K) bool {
 	if len(subset) > len(set) {
 		return false
 	}
@@ -260,22 +275,79 @@ func NewDeviceSet(nodeIds []int, weight, lastIdx int) *DeviceSet {
 		Ids:         nodeIds,
 		TotalWeight: weight,
 		LastIdx:     lastIdx,
+		Size:        len(nodeIds),
 	}
 }
 
-func deriveSubsetsFromPrevLevel(subsets []*DeviceSet, availableIds []int, p2pWeights map[int]map[int]int) []*DeviceSet {
-	outset := make([]*DeviceSet, 0)
-	for _, subset := range subsets {
-		start := subset.LastIdx
-		for i := start + 1; i < len(availableIds); i++ {
-			newsub := addDeviceToSubsetAndUpdateWeight(subset, availableIds[i], i, p2pWeights)
-			outset = append(outset, newsub)
+// in case gpu is partitioned, we group partitions belonging to same gpu/device
+// preference is to allocate maximum partitions from same gpu
+func groupPartitionsByDevId(devs []*Device) map[int]*DevicePartitions {
+	partitions := make(map[int]*DevicePartitions)
+	for _, dev := range devs {
+		if _, ok := partitions[dev.DevId]; !ok {
+			partitions[dev.DevId] = &DevicePartitions{
+				DevId: dev.DevId,
+				Ids:   make([]int, 0),
+				Devs:  make([]string, 0),
+			}
+		}
+		if !strings.Contains(dev.Id, "amdgpu_xcp") {
+			partitions[dev.DevId].ParentId = dev.Id
+		}
+		partitions[dev.DevId].Ids = append(partitions[dev.DevId].Ids, dev.NodeId)
+		partitions[dev.DevId].Devs = append(partitions[dev.DevId].Devs, dev.Id)
+	}
+	return partitions
+}
+
+// from all the available partitions, we pick only required ones
+// available represents the available/unallocated devices when the allocate request is called
+// required represents the devices that are required to be allocated
+// we filter out required ones as they are included in output set by default. removing them saves us computation time
+func filterPartitions(partitions map[int]*DevicePartitions, available, required []*Device) []*DevicePartitions {
+	availableIdMap := make(map[int]struct{})
+	requiredIdMap := make(map[int]struct{})
+	outset := make([]*DevicePartitions, 0)
+	for _, av := range available {
+		availableIdMap[av.NodeId] = struct{}{}
+	}
+	for _, req := range required {
+		requiredIdMap[req.NodeId] = struct{}{}
+	}
+	for _, partitionSet := range partitions {
+		filteredIds := make([]int, 0)
+		for _, id := range partitionSet.Ids {
+			if _, ok := requiredIdMap[id]; ok {
+				continue
+			}
+			if _, ok := availableIdMap[id]; ok {
+				filteredIds = append(filteredIds, id)
+			}
+		}
+		if len(filteredIds) > 0 {
+			sort.Slice(filteredIds, func(i, j int) bool {
+				return filteredIds[i] < filteredIds[j]
+			})
+			filteredPartition := &DevicePartitions{
+				DevId:    partitionSet.DevId,
+				Ids:      filteredIds,
+				ParentId: partitionSet.ParentId,
+			}
+			outset = append(outset, filteredPartition)
 		}
 	}
+	sort.Slice(outset, func(i, j int) bool {
+		len1 := len(outset[i].Ids)
+		len2 := len(outset[j].Ids)
+		if len1 == len2 {
+			return outset[i].ParentId < outset[j].ParentId
+		}
+		return len1 < len2
+	})
 	return outset
 }
 
-func getAllDeviceSubsets(available []*Device, size int, p2pWeights map[int]map[int]int) ([]*DeviceSet, error) {
+func getCandidateDeviceSubsets(allDevPartitions map[int]*DevicePartitions, total, available, required []*Device, size int, p2pWeights map[int]map[int]int) ([]*DeviceSet, error) {
 	if size <= 0 {
 		return []*DeviceSet{}, fmt.Errorf("subset size should be positive integer")
 	}
@@ -284,26 +356,65 @@ func getAllDeviceSubsets(available []*Device, size int, p2pWeights map[int]map[i
 		return []*DeviceSet{}, fmt.Errorf("subset size is more than available devices")
 	}
 
-	var availableIds []int
-	for i := 0; i < len(available); i++ {
-		availableIds = append(availableIds, available[i].NodeId)
-	}
-	sort.Slice(availableIds, func(i, j int) bool {
-		return availableIds[i] < availableIds[j]
+	sort.Slice(available, func(i, j int) bool {
+		return available[i].NodeId < available[j].NodeId
 	})
 
-	subsets := make([][]*DeviceSet, size)
-	//for level 0 create subsets with single element
-	subsets[0] = make([]*DeviceSet, 0)
-	for index, id := range availableIds {
-		ids := []int{id}
-		subsets[0] = append(subsets[0], NewDeviceSet(ids, 0, index))
+	devPartitions := filterPartitions(allDevPartitions, available, required)
+	newSize := size - len(required)
+	subsetsTemp := make([]*DeviceSet, 0)
+	subsetsFinal := make([]*DeviceSet, 0)
+	// if the requested size is less than available partitions of a single gpu, try to allocate all from same gpu
+	for idx, partition := range devPartitions {
+		ids := []int{partition.Ids[0]}
+		devset := NewDeviceSet(ids, 0, idx)
+		if newSize == 1 {
+			for _, req := range required {
+				devset = addDeviceToSubsetAndUpdateWeight(devset, req.NodeId, idx, p2pWeights)
+			}
+			subsetsFinal = append(subsetsFinal, devset)
+			continue
+		}
+		sizeFulfilled := false
+		for i := 1; i < len(partition.Ids); i++ {
+			devset = addDeviceToSubsetAndUpdateWeight(devset, partition.Ids[i], idx, p2pWeights)
+			if i == newSize-1 {
+				sizeFulfilled = true
+				break
+			}
+		}
+		if sizeFulfilled {
+			for _, req := range required {
+				devset = addDeviceToSubsetAndUpdateWeight(devset, req.NodeId, idx, p2pWeights)
+			}
+			subsetsFinal = append(subsetsFinal, devset)
+		} else {
+			subsetsTemp = append(subsetsTemp, devset)
+		}
 	}
-
-	for i := 1; i < size; i++ {
-		currLevel := deriveSubsetsFromPrevLevel(subsets[i-1], availableIds, p2pWeights)
-		subsets[i] = make([]*DeviceSet, 0)
-		subsets[i] = append(subsets[i], currLevel...)
+	for {
+		if len(subsetsTemp) == 0 {
+			break
+		}
+		currentSubset := subsetsTemp[0]
+		subsetsTemp = subsetsTemp[1:]
+		start := currentSubset.LastIdx + 1
+		for idx := start; idx < len(devPartitions); idx++ {
+			devset := NewDeviceSet(currentSubset.Ids, currentSubset.TotalWeight, currentSubset.LastIdx)
+			for _, id := range devPartitions[idx].Ids {
+				devset = addDeviceToSubsetAndUpdateWeight(devset, id, idx, p2pWeights)
+				if devset.Size == newSize {
+					for _, req := range required {
+						devset = addDeviceToSubsetAndUpdateWeight(devset, req.NodeId, idx, p2pWeights)
+					}
+					subsetsFinal = append(subsetsFinal, devset)
+					break
+				}
+			}
+			if devset.Size < newSize {
+				subsetsTemp = append(subsetsTemp, devset)
+			}
+		}
 	}
-	return subsets[size-1], nil
+	return subsetsFinal, nil
 }
