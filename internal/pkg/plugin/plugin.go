@@ -29,7 +29,6 @@ import (
 
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/exporter"
-	"github.com/ROCm/k8s-device-plugin/internal/pkg/hwloc"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
@@ -146,12 +145,8 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 	if isHomogeneous {
 		// limit scope for hwloc
 		func() {
-			var hw hwloc.Hwloc
-			hw.Init()
-			defer hw.Destroy()
-
 			i := 0
-			for id := range p.AMDGPUs {
+			for id, device := range p.AMDGPUs {
 				dev := &pluginapi.Device{
 					ID:     id,
 					Health: pluginapi.Healthy,
@@ -159,17 +154,8 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 				devs[i] = dev
 				i++
 
-				numas, err := hw.GetNUMANodes(id)
+				numas := []int64{int64(device["numaNode"].(int))}
 				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
-				if err != nil {
-					glog.Error(err)
-					continue
-				}
-
-				if len(numas) == 0 {
-					glog.Errorf("No NUMA for GPU ID: %s", id)
-					continue
-				}
 
 				numaNodes := make([]*pluginapi.NUMANode, len(numas))
 				for j, v := range numas {
@@ -186,9 +172,6 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 		s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 	} else {
 		func() {
-			var hw hwloc.Hwloc
-			hw.Init()
-			defer hw.Destroy()
 			// Iterate through deviceCountMap and create empty lists for each partitionType whose count is > 0 with variable name same as partitionType
 			for id, device := range p.AMDGPUs {
 				dev := &pluginapi.Device{
@@ -199,17 +182,8 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 				partitionType := device["computePartition"].(string) + "_" + device["memoryPartition"].(string)
 				resourceTypeDevs[partitionType] = append(resourceTypeDevs[partitionType], dev)
 
-				numas, err := hw.GetNUMANodes(id)
+				numas := []int64{int64(device["numaNode"].(int))}
 				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
-				if err != nil {
-					glog.Error(err)
-					continue
-				}
-
-				if len(numas) == 0 {
-					glog.Errorf("No NUMA for GPU ID: %s", id)
-					continue
-				}
 
 				numaNodes := make([]*pluginapi.NUMANode, len(numas))
 				for j, v := range numas {
