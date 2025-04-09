@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
