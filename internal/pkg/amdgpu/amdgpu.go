@@ -99,32 +99,62 @@ func GetCardFamilyName(cardName string) (string, error) {
 }
 
 // GetAMDGPUs return a map of AMD GPU on a node identified by the part of the pci address
-func GetAMDGPUs() map[string]map[string]int {
+func GetAMDGPUs() map[string]map[string]interface{} {
 	if _, err := os.Stat("/sys/module/amdgpu/drivers/"); err != nil {
 		glog.Warningf("amdgpu driver unavailable: %s", err)
-		return make(map[string]map[string]int)
+		return make(map[string]map[string]interface{})
 	}
 
 	//ex: /sys/module/amdgpu/drivers/pci:amdgpu/0000:19:00.0
 	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
 
-	devices := make(map[string]map[string]int)
-	card, renderD := 0, 128
+	devices := make(map[string]map[string]interface{})
+	card, renderD, devID, realGPUDevID := 0, 128, 0, 0
 
 	for _, path := range matches {
+		computePartitionFile := filepath.Join(path, "current_compute_partition")
+		memoryPartitionFile := filepath.Join(path, "current_memory_partition")
+
+		computePartition, memoryPartition := "", ""
+
+		// Read the compute partition
+		if data, err := ioutil.ReadFile(computePartitionFile); err == nil {
+			computePartition = strings.ToLower(strings.TrimSpace(string(data)))
+		} else {
+			glog.Warningf("Failed to read 'current_compute_partition' file at %s: %s", computePartitionFile, err)
+		}
+
+		// Read the memory partition
+		if data, err := ioutil.ReadFile(memoryPartitionFile); err == nil {
+			memoryPartition = strings.ToLower(strings.TrimSpace(string(data)))
+		} else {
+			glog.Warningf("Failed to read 'current_memory_partition' file at %s: %s", memoryPartitionFile, err)
+		}
+
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
 		for _, devPath := range devPaths {
 			switch name := filepath.Base(devPath); {
 			case name[0:4] == "card":
+				// Read the 'dev' file inside the 'card*' directory
+				devFilePath := filepath.Join(devPath, "dev")
+				if data, err := ioutil.ReadFile(devFilePath); err == nil {
+					devIDStr := strings.TrimSpace(strings.Split(string(data), ":")[1])
+					devID, err = strconv.Atoi(devIDStr)
+					if err != nil {
+						glog.Warningf("Failed to convert devID to int from %s: %s", devFilePath, err)
+					}
+				} else {
+					glog.Warningf("Failed to read 'dev' file at %s: %s", devFilePath, err)
+				}
 				card, _ = strconv.Atoi(name[4:])
 			case name[0:7] == "renderD":
 				renderD, _ = strconv.Atoi(name[7:])
 			}
 		}
-
-		devices[filepath.Base(path)] = map[string]int{"card": card, "renderD": renderD}
+		// add devID from the dev file we read so that we can identify later which gpu should get reported under which resource type
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartition": computePartition, "memoryPartition": memoryPartition}
 	}
 
 	// certain products have additional devices (such as MI300's partitions)
@@ -133,7 +163,7 @@ func GetAMDGPUs() map[string]map[string]int {
 
 	// This is needed because some of the visible renderD are actually not valid
 	// Their validity depends on topology information from KFD
-        topoRenderNodes := renderNodeSetFromTopology()
+	topoRenderNodes := renderNodeSetFromTopology()
 
 	for _, path := range platformMatches {
 		glog.Info(path)
@@ -151,11 +181,99 @@ func GetAMDGPUs() map[string]map[string]int {
 		if !topoRenderNodes[renderD] {
 			continue
 		}
+		computePartition, memoryPartition := "", ""
+		for _, devPath := range devPaths {
+			switch name := filepath.Base(devPath); {
+			case name[0:4] == "card":
+				// Read the 'dev' file inside the 'card*' directory
+				devFilePath := filepath.Join(devPath, "dev")
+				if data, err := ioutil.ReadFile(devFilePath); err == nil {
+					devIDStr := strings.TrimSpace(strings.Split(string(data), ":")[1])
+					devID, err = strconv.Atoi(devIDStr)
+					if err != nil {
+						glog.Warningf("Failed to convert devID to int from %s: %s", devFilePath, err)
+					} else {
+						// calculate the real gpu that it belongs to so that we have count of how many partitions each real gpu has currently
+						realGPUDevID = ((devID-1)/8)*8 + 1
 
-		devices[filepath.Base(path)] = map[string]int{"card": card, "renderD": renderD}
+						// Set the computePartition and memoryPartition from the original GPU
+						for _, device := range devices {
+							if device["devID"] == realGPUDevID {
+								computePartition = device["computePartition"].(string)
+								memoryPartition = device["memoryPartition"].(string)
+								break
+							}
+						}
+					}
+				} else {
+					glog.Warningf("Failed to read 'dev' file at %s: %s", devFilePath, err)
+				}
+			}
+		}
+
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": realGPUDevID, "computePartition": computePartition, "memoryPartition": memoryPartition}
+	}
+	return devices
+}
+
+func GetAMDDeviceCountMap(devices map[string]map[string]interface{}) map[string]int {
+	deviceCountMap := make(map[string]int)
+
+	for _, device := range devices {
+		computePartition := device["computePartition"].(string)
+		memoryPartition := device["memoryPartition"].(string)
+
+		if computePartition != "" && memoryPartition != "" {
+			overallPartition := computePartition + "_" + memoryPartition
+			deviceCountMap[overallPartition]++
+		}
 	}
 
-	return devices
+	glog.Infof("Partition counts: %v", deviceCountMap)
+	return deviceCountMap
+}
+
+func IsHomogeneous() bool {
+	gpus := GetAMDGPUs()
+	deviceCountMap := GetAMDDeviceCountMap(gpus)
+
+	// Homogeneous if the map is empty or contains exactly one partition type
+	return len(deviceCountMap) <= 1
+}
+
+func IsComputePartitionSupported() bool {
+	// Finding GPU paths using the same way its done in other functions like GetAMDGPUs()
+	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
+	if len(matches) == 0 {
+		return false
+	}
+	// Check any one GPU to see if it supports partition (All GPU's are of same model on the node)
+	path := matches[0]
+	computePartitionFile := filepath.Join(path, "available_compute_partition")
+
+	if _, err := os.Stat(computePartitionFile); err != nil {
+		return false
+	}
+
+	// If file exists, then compute partition is supported
+	return true
+}
+
+func IsMemoryPartitionSupported() bool {
+	// Finding GPU paths using the same way its done in other functions like GetAMDGPUs()
+	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
+	if len(matches) == 0 {
+		return false
+	}
+	// Check any one GPU to see if it supports partition (All GPU's are of same model on the node)
+	path := matches[0]
+	memoryPartitionFile := filepath.Join(path, "available_memory_partition")
+
+	if _, err := os.Stat(memoryPartitionFile); err != nil {
+		return false
+	}
+	// If file exists, then memory partition is supported
+	return true
 }
 
 // AMDGPU check if a particular card is an AMD GPU by checking the device's vendor ID
