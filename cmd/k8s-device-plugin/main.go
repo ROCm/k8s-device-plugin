@@ -23,13 +23,35 @@ import (
 	"os"
 	"time"
 
-	"github.com/ROCm/k8s-device-plugin/internal/pkg/plugin"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/hwloc"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/plugin"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 )
 
 var gitDescribe string
+
+func getResourceList() []string {
+	var resources []string
+
+	// Check if the node is homogeneous
+	isHomogeneous := amdgpu.IsHomogeneous()
+	if isHomogeneous {
+		// Homogeneous node will report only "gpu" resource
+		resources = []string{"gpu"}
+	} else {
+		// Heterogeneous node reports resources based on partition types
+		gpus := amdgpu.GetAMDGPUs()
+		partitionCountMap := amdgpu.UniquePartitionConfigCount(gpus)
+		for partitionType, count := range partitionCountMap {
+			if count > 0 {
+				resources = append(resources, partitionType)
+			}
+		}
+	}
+	return resources
+}
 
 func main() {
 	versions := [...]string{
@@ -74,7 +96,8 @@ func main() {
 		// /sys/class/kfd only exists if ROCm kernel/driver is installed
 		var path = "/sys/class/kfd"
 		if _, err := os.Stat(path); err == nil {
-			l.ResUpdateChan <- []string{"gpu"}
+			resources := getResourceList()
+			l.ResUpdateChan <- resources
 		}
 	}()
 	manager.Run()
