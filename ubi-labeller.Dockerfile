@@ -32,11 +32,13 @@ RUN go install \
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
 LABEL \
-    org.opencontainers.image.source="https://github.com/ROCm/k8s-device-plugin" \
-    org.opencontainers.image.authors="Yan Sun <Yan.Sun3@amd.com>" \
-    org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
-    org.opencontainers.image.licenses="Apache-2.0"
-
+    name="amd-k8s-node-labeller" \ 
+    maintainer="shrey.ajmera@amd.com,yan.sun3@amd.com,praveenkumar.shanmugam@amd.com,nitish.bhat@amd.com,sriram.ravishankar@amd.com,udaybhaskar.biluri@amd.com" \
+    vendor="Advanced Micro Devices, Inc." \
+    version="latest" \
+    release="latest" \
+    summary="The AMD Node Labeller automatically detects and labels Kubernetes nodes with AMD GPU hardware." \
+    description="The AMD Node Labeller automatically detects and labels Kubernetes nodes with AMD GPU hardware. This tool automatically labels nodes with GPU properties if a node has one or more AMD GPU installed."
 RUN mkdir -p /licenses && \
     microdnf install -y ca-certificates libdrm && \
     microdnf clean all
