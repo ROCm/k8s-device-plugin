@@ -33,10 +33,13 @@ RUN go install \
 
 FROM registry.access.redhat.com/ubi9/ubi-init:9.4
 LABEL \
-    org.opencontainers.image.source="https://github.com/ROCm/k8s-device-plugin" \
-    org.opencontainers.image.authors="Yan Sun <Yan.Sun3@amd.com>" \
-    org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
-    org.opencontainers.image.licenses="Apache-2.0"
+    name="amd-k8s-device-plugin" \ 
+    maintainer="shrey.ajmera@amd.com,yan.sun3@amd.com,praveenkumar.shanmugam@amd.com,nitish.bhat@amd.com,sriram.ravishankar@amd.com,udaybhaskar.biluri@amd.com" \
+    vendor="Advanced Micro Devices, Inc." \
+    version="latest" \
+    release="latest" \
+    summary="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads." \
+    description="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads. With the appropriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU."
 RUN mkdir -p /licenses && \
     dnf install -y ca-certificates libdrm && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
