@@ -29,6 +29,7 @@ The device plugin supports the following command-line flags:
 |-----|------|-------------|
 | `--kubelet-url` | `http://localhost:10250` | The URL of the kubelet for device plugin registration |
 | `--pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
+| `--resource_naming_strategy` | `single` | Resource Naming strategy chosen for k8s resource reporting. |
 
 ## Configuration File
 
@@ -139,14 +140,69 @@ The node labeller can expose labels such as:
 
 [Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml)
 
-## Resource Naming
+## Resource Naming Strategy
 
-The device plugin advertises AMD GPUs as the `amd.com/gpu` resource type. Pods can request this resource in their specifications to access AMD GPUs:
+To customize the way device plugin reports gpu resources to kubernetes as allocatable k8s resources, use the `single` or `mixed` resource naming strategy flag mentioned above (--resource_naming_strategy)
+
+Before understanding each strategy, please note the definition of homogeneous and heterogeneous nodes
+
+Homogeneous node: A node whose gpu's follow the same compute-memory partition style 
+    -> Example: A node of 8 GPU's where all 8 GPU's are following CPX-NPS4 partition style
+
+Heterogeneous node: A node whose gpu's follow different compute-memory partition styles
+    -> Example: A node of 8 GPU's where 5 GPU's are following SPX-NPS1 and 3 GPU's are following CPX-NPS1
+
+### Single
+
+In `single` mode, the device plugin reports all gpu's (regardless of whether they are whole gpu's or partitions of a gpu) under the resource name `amd.com/gpu`
+This mode is supported for homogeneous nodes but not supported for heterogeneous nodes
+
+A node which has 8 GPUs where all GPUs are not partitioned will report its resources as:
+
+```bash
+amd.com/gpu: 8
+```
+
+A node which has 8 GPUs where all GPUs are partitioned using CPX-NPS4 style will report its resources as:
+
+```bash
+amd.com/gpu: 64
+```
+
+### Mixed
+
+In `mixed` mode, the device plugin reports all gpu's under a name which matches its partition style.
+This mode is supported for both homogeneous nodes and heterogeneous nodes
+
+A node which has 8 GPUs which are all partitioned using CPX-NPS4 style will report its resources as:
+
+```bash
+amd.com/cpx_nps4: 64
+```
+
+A node which has 8 GPUs where 5 GPU's are following SPX-NPS1 and 3 GPU's are following CPX-NPS1 will report its resources as:
+
+```bash
+amd.com/spx_nps1: 5
+amd.com/cpx_nps1: 24
+``` 
+
+- If `resource_naming_strategy` is not passed using the flag, then device plugin will internally default to `single` resource naming strategy. This maintains backwards compatibility with earlier release of device plugin with reported resource name of `amd.com/gpu`
+
+- If a node has GPUs which do not support partitioning, such as MI210, then the GPUs are reported under resource name `amd.com/gpu` regardless of the resource naming strategy
+
+Pods can request the resource as per the naming style in their specifications to access AMD GPUs:
 
 ```yaml
 resources:
   limits:
     amd.com/gpu: 1
+```
+
+```yaml
+resources:
+  limits:
+    amd.com/cpx_nps4: 1
 ```
 
 ## Security and Access Control

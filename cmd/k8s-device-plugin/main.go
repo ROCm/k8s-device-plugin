@@ -23,13 +23,73 @@ import (
 	"os"
 	"time"
 
-	"github.com/ROCm/k8s-device-plugin/internal/pkg/plugin"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/hwloc"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/plugin"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 )
 
 var gitDescribe string
+
+type ResourceNamingStrategy string
+
+const (
+	StrategySingle ResourceNamingStrategy = "single"
+	StrategyMixed  ResourceNamingStrategy = "mixed"
+)
+
+func ParseStrategy(s string) (ResourceNamingStrategy, error) {
+	switch s {
+	case string(StrategySingle):
+		return StrategySingle, nil
+	case string(StrategyMixed):
+		return StrategyMixed, nil
+	default:
+		return "", fmt.Errorf("invalid resource naming strategy: %s", s)
+	}
+}
+
+func getResourceList(resourceNamingStrategy ResourceNamingStrategy) ([]string, error) {
+	var resources []string
+
+	// Check if the node is homogeneous
+	isHomogeneous := amdgpu.IsHomogeneous()
+	devices := amdgpu.GetAMDGPUs()
+	deviceCountMap := amdgpu.GetAMDDeviceCountMap(devices)
+	if len(devices) == 0 {
+		return resources, nil
+	}
+	if isHomogeneous {
+		// Homogeneous node will report only "gpu" resource if strategy is single. If strategy is mixed, it will report resources under the partition type name
+		if resourceNamingStrategy == StrategySingle {
+			resources = []string{"gpu"}
+		} else if resourceNamingStrategy == StrategyMixed {
+			if len(deviceCountMap) == 0 {
+				// If partitioning is not supported on the node, we should report resources under "gpu" regardless of the strategy
+				resources = []string{"gpu"}
+			} else {
+				for partitionType, count := range deviceCountMap {
+					if count > 0 {
+						resources = append(resources, partitionType)
+					}
+				}
+			}
+		}
+	} else {
+		// Heterogeneous node reports resources based on partition types if strategy is mixed. Heterogeneous is not allowed if Strategy is single
+		if resourceNamingStrategy == StrategySingle {
+			return resources, fmt.Errorf("Partitions of different styles across GPUs in a node is not supported with single strategy. Please start device plugin with mixed strategy")
+		} else if resourceNamingStrategy == StrategyMixed {
+			for partitionType, count := range deviceCountMap {
+				if count > 0 {
+					resources = append(resources, partitionType)
+				}
+			}
+		}
+	}
+	return resources, nil
+}
 
 func main() {
 	versions := [...]string{
@@ -46,9 +106,16 @@ func main() {
 		flag.PrintDefaults()
 	}
 	var pulse int
+	var resourceNamingStrategy string
 	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
+	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single or mixed")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
+	strategy, err := ParseStrategy(resourceNamingStrategy)
+	if err != nil {
+		glog.Errorf("%v", err)
+		os.Exit(1)
+	}
 
 	for _, v := range versions {
 		glog.Infof("%s", v)
@@ -74,7 +141,14 @@ func main() {
 		// /sys/class/kfd only exists if ROCm kernel/driver is installed
 		var path = "/sys/class/kfd"
 		if _, err := os.Stat(path); err == nil {
-			l.ResUpdateChan <- []string{"gpu"}
+			resources, err := getResourceList(strategy)
+			if err != nil {
+				glog.Errorf("Error occured: %v", err)
+				os.Exit(1)
+			}
+			if len(resources) > 0 {
+				l.ResUpdateChan <- resources
+			}
 		}
 	}()
 	manager.Run()
