@@ -151,14 +151,17 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 
 	devID := ""
 	devices := make(map[string]map[string]interface{})
-	card, renderD := 0, 128
+	card, renderD, nodeId := 0, 128, 0
 	renderDevIds := GetDevIdsFromTopology()
+	renderNodeIds := GetNodeIdsFromTopology()
 
 	for _, path := range matches {
 		computePartitionFile := filepath.Join(path, "current_compute_partition")
 		memoryPartitionFile := filepath.Join(path, "current_memory_partition")
+		numaNodeFile := filepath.Join(path, "numa_node")
 
 		computePartitionType, memoryPartitionType := "", ""
+		numaNode := -1
 
 		// Read the compute partition
 		if data, err := ioutil.ReadFile(computePartitionFile); err == nil {
@@ -174,6 +177,18 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 			glog.Warningf("Failed to read 'current_memory_partition' file at %s: %s", memoryPartitionFile, err)
 		}
 
+		if data, err := ioutil.ReadFile(numaNodeFile); err == nil {
+			numaNodeStr := strings.TrimSpace(string(data))
+			numaNode, err = strconv.Atoi(numaNodeStr)
+			if err != nil {
+				glog.Warningf("Failed to convert 'numa_node' value to int: %s", err)
+				continue
+			}
+		} else {
+			glog.Warningf("Failed to read 'numa_node' file at %s: %s", numaNodeFile, err)
+			continue
+		}
+
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
@@ -186,10 +201,14 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 				if val, exists := renderDevIds[renderD]; exists {
 					devID = val
 				}
+				if id, exists := renderNodeIds[renderD]; exists {
+					nodeId = id
+				}
 			}
+
 		}
 		// add devID so that we can identify later which gpu should get reported under which resource type
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType}
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
 	}
 
 	// certain products have additional devices (such as MI300's partitions)
@@ -200,6 +219,9 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
+		computePartitionType, memoryPartitionType := "", ""
+		numaNode := -1
+
 		for _, devPath := range devPaths {
 			switch name := filepath.Base(devPath); {
 			case name[0:4] == "card":
@@ -209,16 +231,19 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 				if val, exists := renderDevIds[renderD]; exists {
 					devID = val
 				}
-				computePartitionType, memoryPartitionType := "", ""
 				// Set the computePartitionType and memoryPartitionType from the real GPU or from other partitions using the common devID
 				for _, device := range devices {
 					if device["devID"] == devID {
 						if device["computePartitionType"].(string) != "" && device["memoryPartitionType"].(string) != "" {
 							computePartitionType = device["computePartitionType"].(string)
 							memoryPartitionType = device["memoryPartitionType"].(string)
+							numaNode = device["numaNode"].(int)
 							break
 						}
 					}
+				}
+				if id, exists := renderNodeIds[renderD]; exists {
+					nodeId = id
 				}
 			}
 		}
@@ -228,9 +253,12 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		if _, exists := renderDevIds[renderD]; !exists {
 			continue
 		}
-
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType}
+		if numaNode == -1 {
+			continue
+		}
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
 	}
+	glog.Infof("Devices map: %v", devices)
 	return devices
 }
 
@@ -485,3 +513,47 @@ func parseDebugFSFirmwareInfo(path string) (map[string]uint32, map[string]uint32
 
 var topoDrmRenderMinorRe = regexp.MustCompile(`drm_render_minor\s(\d+)`)
 var topoUniqueIdRe = regexp.MustCompile(`unique_id\s(\d+)`)
+
+func GetNodeIdsFromTopology(topoRootParam ...string) map[int]int {
+	topoRoot := "/sys/class/kfd/kfd"
+	if len(topoRootParam) == 1 {
+		topoRoot = topoRootParam[0]
+	}
+
+	renderNodeIds := make(map[int]int)
+	var nodeFiles []string
+	var err error
+
+	if nodeFiles, err = filepath.Glob(topoRoot + "/topology/nodes/*/properties"); err != nil {
+		glog.Fatalf("glob error: %s", err)
+		return renderNodeIds
+	}
+
+	for _, nodeFile := range nodeFiles {
+		glog.Info("Parsing " + nodeFile)
+		v, e := ParseTopologyProperties(nodeFile, topoDrmRenderMinorRe)
+		if e != nil {
+			glog.Error(e)
+			continue
+		}
+
+		if v <= 0 {
+			continue
+		}
+		// For a certain drm_render_minor value in the properties file, we are assigning the nodeID as the <int> value from topology/nodes/<int>/properties/
+		// Later we use the renderD of a certain GPU as the key to fetch its nodeID from here
+		// Extract the node index (the folder name) from the file path
+		nodeIndex := filepath.Base(filepath.Dir(nodeFile))
+
+		// Convert the node index to an integer
+		nodeId, err := strconv.Atoi(nodeIndex)
+		if err != nil {
+			glog.Errorf("Failed to convert node index %s to int: %v", nodeIndex, err)
+			continue
+		}
+
+		renderNodeIds[int(v)] = nodeId
+	}
+
+	return renderNodeIds
+}
