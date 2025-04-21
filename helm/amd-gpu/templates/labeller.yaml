@@ -9,6 +9,10 @@ spec:
   selector:
     matchLabels:
       name: amdgpu-lr-ds
+  {{- with .Values.lbl.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   template:
     metadata:
       labels:

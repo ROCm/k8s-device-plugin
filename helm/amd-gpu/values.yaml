@@ -10,6 +10,11 @@ dp:
     # Overrides the image tag whose default is the chart appVersion.
     tag: "1.31.0.6"
   resources: {}
+  # Set daemonsets updateStrategy for device plugin
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
 
 lbl:
   image:
@@ -34,6 +39,11 @@ lbl:
     # requests:
     #   memory: 30Mi
     #   cpu: 150m
+  # Set daemonsets updateStrategy for labeller
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
 
 imagePullSecrets: []
 
