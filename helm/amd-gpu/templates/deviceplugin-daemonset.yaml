@@ -7,6 +7,10 @@ spec:
   selector:
     matchLabels:
       name: {{ .Chart.Name }}-dp-ds
+  {{- with .Values.dp.updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   template:
     metadata:
       labels:
