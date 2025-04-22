@@ -45,6 +45,10 @@ spec:
               mountPath: /var/lib/amd-metrics-exporter/
           resources:
             {{- toYaml .Values.dp.resources | nindent 12 }}
+          args:
+            {{- toYaml .Values.dp.args | nindent 12 }}
+          command:
+            {{- toYaml .Values.dp.command | nindent 12 }}
       volumes:
         - name: dp
           hostPath:
