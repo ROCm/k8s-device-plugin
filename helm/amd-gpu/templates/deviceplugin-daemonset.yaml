@@ -34,6 +34,10 @@ spec:
       containers:
         - name: {{ .Chart.Name }}-dp-cntr
           image: {{ .Values.dp.image.repository }}:{{ .Values.dp.image.tag | default .Chart.AppVersion }}
+          command:
+            {{- toYaml .Values.dp.command | nindent 12 }}
+          args:
+            {{- toYaml .Values.dp.args | nindent 12 }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           volumeMounts:
@@ -45,10 +49,6 @@ spec:
               mountPath: /var/lib/amd-metrics-exporter/
           resources:
             {{- toYaml .Values.dp.resources | nindent 12 }}
-          args:
-            {{- toYaml .Values.dp.args | nindent 12 }}
-          command:
-            {{- toYaml .Values.dp.command | nindent 12 }}
       volumes:
         - name: dp
           hostPath:
