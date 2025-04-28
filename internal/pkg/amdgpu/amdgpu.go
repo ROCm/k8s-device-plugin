@@ -293,6 +293,33 @@ func ParseTopologyProperties(path string, re *regexp.Regexp) (int64, error) {
 	return v, e
 }
 
+// ParseTopologyProperties parse for a property value in kfd topology file as string
+// The format is usually one entry per line <name> <value>.  Examples in
+// testdata/topology-parsing/.
+func ParseTopologyPropertiesString(path string, re *regexp.Regexp) (string, error) {
+    f, e := os.Open(path)
+    if e != nil {
+        return "", e
+    }
+
+    e = errors.New("Topology property not found.  Regex: " + re.String())
+    v := ""
+    scanner := bufio.NewScanner(f)
+    for scanner.Scan() {
+        m := re.FindStringSubmatch(scanner.Text())
+        if m == nil {
+            continue
+        }
+
+        v = m[1]
+        e = nil
+        break
+    }
+    f.Close()
+
+    return v, e
+}
+
 var fwVersionRe = regexp.MustCompile(`(\w+) feature version: (\d+), firmware version: (0x[0-9a-fA-F]+)`)
 
 func parseDebugFSFirmwareInfo(path string) (map[string]uint32, map[string]uint32) {

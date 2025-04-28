@@ -23,4 +23,5 @@ local_mem_size 17163091968
 fw_version 392
 capability 8832
 sdma_fw_version 421
+unique_id 14073402507705256557
 max_engine_clk_ccompute 3200
