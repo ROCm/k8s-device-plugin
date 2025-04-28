@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"strings"
 
 	"github.com/go-logr/logr"
 
@@ -43,12 +42,7 @@ func (r *reconcileNodeLabels) Reconcile(ctx context.Context, request reconcile.R
 	}
 
 	// Remove old labels
-	for k := range node.Labels {
-		if strings.HasPrefix(k, "beta.amd.com") ||
-			strings.HasPrefix(k, "amd.com") {
-			delete(node.Labels, k)
-		}
-	}
+	removeOldNodeLabels(node)
 
 	for k, v := range r.labels {
 		node.Labels[k] = v
