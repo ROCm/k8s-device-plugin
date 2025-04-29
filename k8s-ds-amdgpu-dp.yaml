@@ -22,7 +22,7 @@ spec:
       - image: rocm/k8s-device-plugin
         name: amdgpu-dp-cntr
         securityContext:
-          allowPrivilegeEscalation: false
+          privileged: true
           capabilities:
             drop: ["ALL"]
         volumeMounts:
