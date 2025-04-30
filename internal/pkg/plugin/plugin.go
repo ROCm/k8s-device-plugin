@@ -39,11 +39,12 @@ import (
 
 // Plugin is identical to DevicePluginServer interface of device plugin API.
 type AMDGPUPlugin struct {
-	AMDGPUs      map[string]map[string]interface{}
-	Heartbeat    chan bool
-	signal       chan os.Signal
-	Resource     string
-	devAllocator allocator.Policy
+	AMDGPUs            map[string]map[string]interface{}
+	Heartbeat          chan bool
+	signal             chan os.Signal
+	Resource           string
+	devAllocator       allocator.Policy
+	allocatorInitError bool
 }
 
 type AMDGPUPluginOption func(*AMDGPUPlugin)
@@ -83,7 +84,8 @@ func (p *AMDGPUPlugin) Start() error {
 	signal.Notify(p.signal, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 	err := p.devAllocator.Init(getDevices(), "")
 	if err != nil {
-		glog.Fatalf("allocator init failed with error %v. Exiting...", err)
+		glog.Errorf("allocator init failed. Falling back to kubelet default allocation. Error %v", err)
+		p.allocatorInitError = true
 	}
 	return nil
 }
@@ -157,55 +159,58 @@ func countGPUDevFromTopology(topoRootParam ...string) int {
 }
 
 func simpleHealthCheck() bool {
-    entries, err := filepath.Glob("/sys/class/kfd/kfd/topology/nodes/*/properties")
-    if err != nil {
-        glog.Errorf("Error finding properties files: %v", err)
-        return false
-    }
+	entries, err := filepath.Glob("/sys/class/kfd/kfd/topology/nodes/*/properties")
+	if err != nil {
+		glog.Errorf("Error finding properties files: %v", err)
+		return false
+	}
 
-    for _, propFile := range entries {
-        f, err := os.Open(propFile)
-        if err != nil {
-            glog.Errorf("Error opening %s: %v", propFile, err)
-            continue
-        }
-        defer f.Close()
+	for _, propFile := range entries {
+		f, err := os.Open(propFile)
+		if err != nil {
+			glog.Errorf("Error opening %s: %v", propFile, err)
+			continue
+		}
+		defer f.Close()
 
-        var cpuCores, gfxVersion int
-        scanner := bufio.NewScanner(f)
-        for scanner.Scan() {
-            line := scanner.Text()
-            if strings.HasPrefix(line, "cpu_cores_count") {
-                parts := strings.Fields(line)
-                if len(parts) == 2 {
-                    cpuCores, _ = strconv.Atoi(parts[1])
-                }
-            } else if strings.HasPrefix(line, "gfx_target_version") {
-                parts := strings.Fields(line)
-                if len(parts) == 2 {
-                    gfxVersion, _ = strconv.Atoi(parts[1])
-                }
-            }
-        }
+		var cpuCores, gfxVersion int
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "cpu_cores_count") {
+				parts := strings.Fields(line)
+				if len(parts) == 2 {
+					cpuCores, _ = strconv.Atoi(parts[1])
+				}
+			} else if strings.HasPrefix(line, "gfx_target_version") {
+				parts := strings.Fields(line)
+				if len(parts) == 2 {
+					gfxVersion, _ = strconv.Atoi(parts[1])
+				}
+			}
+		}
 
-        if err := scanner.Err(); err != nil {
-            glog.Warningf("Error scanning %s: %v", propFile, err)
-            continue
-        }
+		if err := scanner.Err(); err != nil {
+			glog.Warningf("Error scanning %s: %v", propFile, err)
+			continue
+		}
 
-        if cpuCores == 0 && gfxVersion > 0 {
-            // Found a GPU
-            return true
-        }
-    }
+		if cpuCores == 0 && gfxVersion > 0 {
+			// Found a GPU
+			return true
+		}
+	}
 
-    glog.Warning("No GPU nodes found via properties")
-    return false
+	glog.Warning("No GPU nodes found via properties")
+	return false
 }
 
 // GetDevicePluginOptions returns options to be communicated with Device
 // Manager
 func (p *AMDGPUPlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
+	if p.allocatorInitError {
+		return &pluginapi.DevicePluginOptions{}, nil
+	}
 	return &pluginapi.DevicePluginOptions{
 		GetPreferredAllocationAvailable: true,
 	}, nil
