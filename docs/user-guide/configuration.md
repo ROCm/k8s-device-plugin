@@ -138,6 +138,18 @@ The node labeller can expose labels such as:
 - `amd.com/gpu.product-name`: Product name of the GPU
 - And others based on the passed arguments
 
+Exposing GPU Partition related through Node Labeller:
+
+As part of the arguments passed while starting node labeller, these flags can be passed to expose partition labels:
+- compute-partitioning-supported
+- memory-partitioning-supported
+- compute-memory-partition
+
+These 3 labels have these respective possible values
+- `amd.com/compute-partitioning-supported`: ["true", "false"]
+- `amd.com/memory-partitioning-supported`: ["true", "false"]
+- `amd.com/compute-memory-partition`: ["spx_nps1", "cpx_nps1" ,"cpx_nps4", ...]
+
 [Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml)
 
 ## Resource Naming Strategy
