@@ -9,6 +9,8 @@ dp:
     repository: docker.io/rocm/k8s-device-plugin
     # Overrides the image tag whose default is the chart appVersion.
     tag: "1.31.0.6"
+  command: ["./k8s-device-plugin"]
+  args: ["-logtostderr=true", "-stderrthreshold=INFO", "-v=5"] 
   resources: {}
   # Set daemonsets updateStrategy for device plugin
   updateStrategy:
