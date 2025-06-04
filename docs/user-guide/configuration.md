@@ -30,6 +30,17 @@ The device plugin supports the following command-line flags:
 | `--kubelet-url` | `http://localhost:10250` | The URL of the kubelet for device plugin registration |
 | `--pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
 | `--resource_naming_strategy` | `single` | Resource Naming strategy chosen for k8s resource reporting. |
+| `--driver_type` | `""` | GPU operational mode: `container`, `vf-passthrough`, or `pf-passthrough`. When empty (default), automatic mode detection is used. |
+
+### Driver Type and Operational Modes
+
+The `--driver_type` flag controls how the device plugin operates and what types of GPU resources it exposes:
+
+- **`container` (default when ROCm/AMDGPU driver detected)**: Standard GPU usage for containerized applications using `/dev/kfd` and `/dev/dri` devices
+- **`vf-passthrough`**: Virtual Function passthrough for KubeVirt VMs using SR-IOV and VFIO. Requires [AMD MxGPU GIM driver](https://github.com/amd/MxGPU-Virtualization)
+- **`pf-passthrough`**: Physical Function passthrough for KubeVirt VMs using VFIO. No special driver requirements beyond VFIO
+
+When `--driver_type` is not specified or set to empty string, the device plugin automatically detects the operational mode by inspecting the system configuration (presence of `/dev/kfd`, VF symlinks, driver bindings, etc.) in this order - `container`, `vf-passthrough` and `pf-passthrough`.
 
 ## Configuration File
 
@@ -90,12 +101,25 @@ These mounts are required for basic functionality:
 
 ### Device Mounts
 
-For GPU functionality, these device files must be accessible:
+The required device mounts depend on the operational mode:
 
+#### Container Mode (Standard GPU Access)
 | Mount Path | Purpose |
 |------------|---------|
 | `/dev/kfd` | Kernel Fusion Driver interface, required for GPU compute workloads |
 | `/dev/dri` | Direct Rendering Infrastructure, required for GPU access |
+
+#### VF/PF Passthrough Mode (KubeVirt)
+| Mount Path | Purpose |
+|------------|---------|
+| `/dev/vfio/<iommu_group_id>` | VFIO device file for the specific IOMMU group containing the VF or PF |
+| `/dev/vfio/vfio` | VFIO container device, required for all VFIO operations |
+
+**IOMMU Groups**: In VF/PF passthrough modes, devices are allocated by IOMMU groups rather than individual GPUs. Each IOMMU group represents a set of devices that must be assigned together for security and isolation. The device plugin:
+- For VF mode: Discovers VFs and maps them to their IOMMU groups. The number of `amd.com/gpu` resources equals the number of unique IOMMU groups containing VFs
+- For PF mode: Discovers PFs bound to `vfio-pci` and maps them to their IOMMU groups. Each IOMMU group containing PFs becomes one `amd.com/gpu` resource
+
+The device plugin sets the environment variable `PCI_RESOURCE_AMD_COM_<RESOURCE_NAME>` (e.g., `PCI_RESOURCE_AMD_COM_GPU`) containing comma-separated PCI addresses of the allocated VFs or PFs.
 
 ## Example Deployments
 
@@ -129,16 +153,33 @@ Deploys the AMD GPU node labeller, which adds detailed GPU information as node l
 - Creates Kubernetes node labels with details like VRAM size, compute units, etc.
 - Helps with GPU-specific workload scheduling
 
-The node labeller can expose labels such as:
+#### Container Mode Labels
 
+For standard containerized GPU workloads, the node labeller can expose labels such as:
+
+- `amd.com/gpu.mode`: Operational mode (`container`)
 - `amd.com/gpu.vram`: GPU memory size
 - `amd.com/gpu.cu-count`: Number of compute units
 - `amd.com/gpu.device-id`: Device ID of the GPU
 - `amd.com/gpu.family`: GPU family/architecture
 - `amd.com/gpu.product-name`: Product name of the GPU
-- And others based on the passed arguments
+- `amd.com/gpu.driver-version`: ROCm/AMDGPU driver version
 
-Exposing GPU Partition related through Node Labeller:
+#### KubeVirt Passthrough Mode Labels
+
+For VF and PF passthrough modes (KubeVirt integration), these labels are applied:
+
+**Common Labels:**
+- `amd.com/gpu.mode`: Operational mode (`vf-passthrough`, or `pf-passthrough`)
+- `amd.com/gpu.device-id`: Device ID (VF device ID for VF mode, PF device ID for PF mode)
+- `amd.com/gpu.device-id.<DEVICE_ID>`: Count of devices with specific device ID
+
+**VF Passthrough Specific Labels:**
+- `amd.com/gpu.driver-version`: GIM driver version (when managed by the operator)
+
+**Note**: The `amd.com/gpu.driver-version` label is not available in `pf-passthrough` mode as no special driver is required.
+
+#### GPU Partition Labels
 
 As part of the arguments passed while starting node labeller, these flags can be passed to expose partition labels:
 - compute-partitioning-supported
@@ -154,7 +195,9 @@ These 3 labels have these respective possible values
 
 ## Resource Naming Strategy
 
-To customize the way device plugin reports gpu resources to kubernetes as allocatable k8s resources, use the `single` or `mixed` resource naming strategy flag mentioned above (--resource_naming_strategy)
+To customize the way device plugin reports gpu resources to kubernetes as allocatable k8s resources, use the `single` or `mixed` resource naming strategy flag mentioned above (--resource_naming_strategy).
+
+**Note**: Resource naming strategy applies only to `container` mode. In `vf-passthrough` and `pf-passthrough` modes, all resources are reported under `amd.com/gpu` regardless of the strategy setting.
 
 Before understanding each strategy, please note the definition of homogeneous and heterogeneous nodes
 
@@ -216,6 +259,67 @@ resources:
   limits:
     amd.com/cpx_nps4: 1
 ```
+
+## KubeVirt Integration
+
+The AMD GPU device plugin supports integration with [KubeVirt](https://kubevirt.io/) for GPU passthrough to virtual machines. This enables VMs running in Kubernetes to access AMD GPUs directly.
+
+### Prerequisites
+
+- KubeVirt installed in the cluster
+- Host nodes configured for IOMMU and VFIO support
+- For VF passthrough: AMD MxGPU GIM driver installed and VFs created
+- For PF passthrough: GPUs bound to `vfio-pci` driver
+
+### VF Passthrough Configuration
+
+For Virtual Function passthrough using SR-IOV:
+
+1. **Host Setup**: Install AMD MxGPU GIM driver and configure SR-IOV VFs
+2. **Device Plugin**: Use `--driver_type=vf-passthrough` or let auto-detection discover VF mode
+3. **Resource Allocation**: VFs are grouped by IOMMU groups and advertised as `amd.com/gpu` resources
+
+**MI210 Specific Constraints**: Due to XGMI fabric architecture, VFs can only be assigned to VMs in combinations of 1, 2, 4, or 8 VFs per hive (typically 4 VFs per hive).
+
+### PF Passthrough Configuration
+
+For Physical Function passthrough:
+
+1. **Host Setup**: Bind AMD GPU PFs to `vfio-pci` driver
+2. **Device Plugin**: Use `--driver_type=pf-passthrough` or let auto-detection discover PF mode
+3. **Resource Allocation**: PFs are grouped by IOMMU groups and advertised as `amd.com/gpu` resources
+
+### KubeVirt VM Example
+
+Example KubeVirt VirtualMachine requesting GPU passthrough:
+
+```yaml
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: gpu-vm
+spec:
+  template:
+    spec:
+      domain:
+        devices:
+          hostDevices:
+          - deviceName: amd.com/gpu
+            name: gpu1
+      nodeSelector:
+        amd.com/gpu.mode: vf-passthrough  # or pf-passthrough
+```
+
+### Verification
+
+After VM deployment, verify GPU passthrough inside the VM:
+
+```bash
+# Inside the VM
+lspci | grep -i amd
+```
+
+For VF passthrough, you should see VF devices. For PF passthrough, you should see the full PF devices.
 
 ## Security and Access Control
 
