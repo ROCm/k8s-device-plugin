@@ -188,7 +188,7 @@ func (i *AMDGPUKFDImpl) Enumerate(ctx types.DevicePluginContext) ([]*pluginapi.D
 }
 
 func (i *AMDGPUKFDImpl) convertToPluginDeviceList(resource string) []*pluginapi.Device {
-	devs := make([]*pluginapi.Device, 0, len(i.deviceMap))
+	devs := make([]*pluginapi.Device, len(i.deviceMap))
 	// Initialize a map to store partitionType based device list
 	resourceTypeDevs := make(map[string][]*pluginapi.Device)
 
