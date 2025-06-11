@@ -116,8 +116,12 @@ The required device mounts depend on the operational mode:
 | `/dev/vfio/vfio` | VFIO container device, required for all VFIO operations |
 
 **IOMMU Groups**: In VF/PF passthrough modes, devices are allocated by IOMMU groups rather than individual GPUs. Each IOMMU group represents a set of devices that must be assigned together for security and isolation. The device plugin:
-- For VF mode: Discovers VFs and maps them to their IOMMU groups. The number of `amd.com/gpu` resources equals the number of unique IOMMU groups containing VFs
-- For PF mode: Discovers PFs bound to `vfio-pci` and maps them to their IOMMU groups. Each IOMMU group containing PFs becomes one `amd.com/gpu` resource
+- For VF mode: Discovers VFs and maps them to their IOMMU groups. The number of resources equals the number of unique IOMMU groups containing VFs
+- For PF mode: Discovers PFs bound to `vfio-pci` and maps them to their IOMMU groups. Each IOMMU group containing PFs becomes one resource
+
+Resource names depend on the naming strategy:
+- **Single strategy**: All resources reported as `amd.com/gpu`
+- **Mixed strategy**: VF resources as `amd.com/gpu_vf`, PF resources as `amd.com/gpu_pf`
 
 The device plugin sets the environment variable `PCI_RESOURCE_AMD_COM_<RESOURCE_NAME>` (e.g., `PCI_RESOURCE_AMD_COM_GPU`) containing comma-separated PCI addresses of the allocated VFs or PFs.
 
@@ -197,7 +201,15 @@ These 3 labels have these respective possible values
 
 To customize the way device plugin reports gpu resources to kubernetes as allocatable k8s resources, use the `single` or `mixed` resource naming strategy flag mentioned above (--resource_naming_strategy).
 
-**Note**: Resource naming strategy applies only to `container` mode. In `vf-passthrough` and `pf-passthrough` modes, all resources are reported under `amd.com/gpu` regardless of the strategy setting.
+The resource naming strategy affects all operational modes:
+
+### Container Mode
+- **Single**: All GPUs reported as `amd.com/gpu`
+- **Mixed**: GPUs reported by partition type (e.g., `amd.com/cpx_nps4`, `amd.com/spx_nps1`)
+
+### VF/PF Passthrough Modes
+- **Single**: All resources reported as `amd.com/gpu`
+- **Mixed**: Resources reported as `amd.com/gpu_vf` (VF passthrough) or `amd.com/gpu_pf` (PF passthrough)
 
 Before understanding each strategy, please note the definition of homogeneous and heterogeneous nodes
 
@@ -260,6 +272,28 @@ resources:
     amd.com/cpx_nps4: 1
 ```
 
+**VF/PF Passthrough Examples:**
+```yaml
+# Single strategy - both VF and PF use amd.com/gpu
+resources:
+  limits:
+    amd.com/gpu: 1
+```
+
+```yaml
+# Mixed strategy - VF passthrough
+resources:
+  limits:
+    amd.com/gpu_vf: 1
+```
+
+```yaml
+# Mixed strategy - PF passthrough
+resources:
+  limits:
+    amd.com/gpu_pf: 1
+```
+
 ## KubeVirt Integration
 
 The AMD GPU device plugin supports integration with [KubeVirt](https://kubevirt.io/) for GPU passthrough to virtual machines. This enables VMs running in Kubernetes to access AMD GPUs directly.
@@ -277,7 +311,7 @@ For Virtual Function passthrough using SR-IOV:
 
 1. **Host Setup**: Install AMD MxGPU GIM driver and configure SR-IOV VFs
 2. **Device Plugin**: Use `--driver_type=vf-passthrough` or let auto-detection discover VF mode
-3. **Resource Allocation**: VFs are grouped by IOMMU groups and advertised as `amd.com/gpu` resources
+3. **Resource Allocation**: VFs are grouped by IOMMU groups and advertised as `amd.com/gpu` (single strategy) or `amd.com/gpu_vf` (mixed strategy)
 
 **MI210 Specific Constraints**: Due to XGMI fabric architecture, VFs can only be assigned to VMs in combinations of 1, 2, 4, or 8 VFs per hive (typically 4 VFs per hive).
 
@@ -287,12 +321,13 @@ For Physical Function passthrough:
 
 1. **Host Setup**: Bind AMD GPU PFs to `vfio-pci` driver
 2. **Device Plugin**: Use `--driver_type=pf-passthrough` or let auto-detection discover PF mode
-3. **Resource Allocation**: PFs are grouped by IOMMU groups and advertised as `amd.com/gpu` resources
+3. **Resource Allocation**: PFs are grouped by IOMMU groups and advertised as `amd.com/gpu` (single strategy) or `amd.com/gpu_pf` (mixed strategy)
 
 ### KubeVirt VM Example
 
 Example KubeVirt VirtualMachine requesting GPU passthrough:
 
+**Single Resource Naming Strategy:**
 ```yaml
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
@@ -306,8 +341,50 @@ spec:
           hostDevices:
           - deviceName: amd.com/gpu
             name: gpu1
+        resources:
+          requests:
+            amd.com/gpu: 1
       nodeSelector:
         amd.com/gpu.mode: vf-passthrough  # or pf-passthrough
+```
+
+**Mixed Resource Naming Strategy:**
+```yaml
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: gpu-vm-vf
+spec:
+  template:
+    spec:
+      domain:
+        devices:
+          hostDevices:
+          - deviceName: amd.com/gpu_vf
+            name: gpu1
+        resources:
+          requests:
+            amd.com/gpu_vf: 1
+      nodeSelector:
+        amd.com/gpu.device-id: "0x74b5"  # MI300X VF device ID
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: gpu-vm-pf
+spec:
+  template:
+    spec:
+      domain:
+        devices:
+          hostDevices:
+          - deviceName: amd.com/gpu_pf
+            name: gpu1
+        resources:
+          requests:
+            amd.com/gpu_pf: 1
+      nodeSelector:
+        amd.com/gpu.device-id: "0x74a1"  # MI300X PF device ID
 ```
 
 ### Verification

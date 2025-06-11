@@ -79,4 +79,10 @@ const (
 
 	// Device Type reported to kubelet
 	DeviceTypeGPU = "gpu"
+
+	// Device Type for VF passthrough in mixed resource naming strategy
+	DeviceTypeGPUVF = "gpu_vf"
+
+	// Device Type for PF passthrough in mixed resource naming strategy
+	DeviceTypeGPUPF = "gpu_pf"
 )

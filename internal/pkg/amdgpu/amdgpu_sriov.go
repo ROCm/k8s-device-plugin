@@ -46,10 +46,20 @@ type AMDGPUVFImpl struct {
 	// For example, if resource "gpu" corresponds to one IOMMU group 218, devList["gpu"]
 	// might contain a single pluginapi.Device with ID "218" and healthy status
 	devList map[string][]*pluginapi.Device
+	// resourceNamingStrategy controls how resources are named for Kubernetes
+	resourceNamingStrategy string
 }
 
 func NewGPUVFImpl(initParams map[string]interface{}) (types.DeviceImpl, error) {
 	impl := &AMDGPUVFImpl{}
+
+	// Extract resource naming strategy from init params
+	if strategy, ok := initParams[types.CmdLineResNamingStrategy]; ok {
+		impl.resourceNamingStrategy = strategy.(string)
+	} else {
+		impl.resourceNamingStrategy = types.ResourceNamingStrategySingle // Default to single strategy
+	}
+
 	if err := impl.Init(); err != nil {
 		return nil, err
 	}
@@ -88,7 +98,12 @@ func (i *AMDGPUVFImpl) GetResourceNames() (resources []string) {
 		return nil
 	}
 
-	// We assume we only serve VFs on this node
+	// For VF passthrough, return appropriate resource names based on strategy
+	if i.resourceNamingStrategy == types.ResourceNamingStrategyMixed {
+		return []string{types.DeviceTypeGPUVF} // In mixed mode, VF resources use "gpu_vf"
+	}
+
+	// In single mode, all resources use "gpu"
 	return []string{types.DeviceTypeGPU}
 }
 
@@ -167,7 +182,6 @@ func (i *AMDGPUVFImpl) Allocate(ctx types.DevicePluginContext, r *pluginapi.Allo
 				ContainerPath: filepath.Join("/dev/vfio", "vfio"),
 				Permissions:   "mrw",
 			})
-
 			vfList := []string{}
 			for _, vfInfo := range vfDevices {
 				vfList = append(vfList, vfInfo.VF)
