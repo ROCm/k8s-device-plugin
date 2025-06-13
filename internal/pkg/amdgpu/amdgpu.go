@@ -36,8 +36,312 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/allocator"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/exporter"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/types"
 	"github.com/golang/glog"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
+
+// AMDGPUKFDImpl implements the DeviceImpl interface for container-based workloads using ROCm/KFD
+type AMDGPUKFDImpl struct {
+	initErr                error
+	deviceMap              map[string]map[string]interface{}
+	homogeneous            bool
+	devList                map[string][]*pluginapi.Device
+	resourceNamingStrategy string
+}
+
+func NewGPUKFDImpl(initParams map[string]interface{}) (types.DeviceImpl, error) {
+	resourceNamingStrategy, _ := initParams[types.CmdLineResNamingStrategy]
+	impl := &AMDGPUKFDImpl{
+		resourceNamingStrategy: resourceNamingStrategy.(string),
+	}
+
+	if err := impl.Init(); err != nil {
+		return nil, err
+	}
+	return impl, nil
+}
+
+func (i *AMDGPUKFDImpl) Init() error {
+	var path = "/sys/class/kfd"
+	if _, err := os.Stat(path); err != nil {
+		i.initErr = fmt.Errorf("No amd gpu driver loaded")
+		return i.initErr
+	}
+	i.deviceMap = GetAMDGPUs()
+	i.homogeneous = IsHomogeneous(i.deviceMap)
+
+	if !i.homogeneous && i.resourceNamingStrategy == types.ResourceNamingStrategySingle {
+		i.initErr = fmt.Errorf("Partitions of different styles across GPUs in a node is not supported with single strategy. Please start device plugin with mixed strategy")
+		return i.initErr
+	}
+
+	i.devList = make(map[string][]*pluginapi.Device)
+	resources := i.GetResourceNames()
+	for _, r := range resources {
+		i.devList[r] = i.convertToPluginDeviceList(r)
+	}
+	return nil
+}
+
+func (i *AMDGPUKFDImpl) Start(ctx types.DevicePluginContext) error {
+	var deviceList []*allocator.Device
+
+	if i.initErr != nil {
+		return i.initErr
+	}
+
+	for id, deviceData := range i.deviceMap {
+		device := &allocator.Device{
+			Id:                   id,
+			Card:                 deviceData["card"].(int),
+			RenderD:              deviceData["renderD"].(int),
+			DevId:                deviceData["devID"].(string),
+			ComputePartitionType: deviceData["computePartitionType"].(string),
+			MemoryPartitionType:  deviceData["memoryPartitionType"].(string),
+			NodeId:               deviceData["nodeId"].(int),
+			NumaNode:             deviceData["numaNode"].(int),
+		}
+		deviceList = append(deviceList, device)
+	}
+
+	devAllocator := ctx.GetAllocator()
+	err := devAllocator.Init(deviceList, "")
+	if err != nil {
+		glog.Errorf("allocator init failed for plugin %s. Falling back to kubelet default allocation. Error %v", ctx.ResourceName(), err)
+		ctx.SetAllocatorError(true)
+	}
+
+	return nil
+}
+
+// GetResourceNames returns a slice of resource names
+func (i *AMDGPUKFDImpl) GetResourceNames() (resources []string) {
+
+	if i.initErr != nil {
+		return
+	}
+
+	if len(i.deviceMap) == 0 {
+		return
+	}
+
+	partitionCountMap := UniquePartitionConfigCount(i.deviceMap)
+
+	// Check if the node is homogeneous
+	if i.homogeneous {
+		// Homogeneous node will report only "gpu" resource if strategy is single. If strategy is mixed, it will report resources under the partition type name
+		if i.resourceNamingStrategy == types.ResourceNamingStrategySingle {
+			resources = []string{types.DeviceTypeGPU}
+		} else if i.resourceNamingStrategy == types.ResourceNamingStrategyMixed {
+			if len(partitionCountMap) == 0 {
+				// If partitioning is not supported on the node, we should report resources under "gpu" regardless of the strategy
+				resources = []string{types.DeviceTypeGPU}
+			} else {
+				for partitionType, count := range partitionCountMap {
+					if count > 0 {
+						resources = append(resources, partitionType)
+					}
+				}
+			}
+		}
+	} else {
+		// Heterogeneous node reports resources based on partition types if strategy is mixed. Heterogeneous is not allowed if Strategy is single
+		// Strategy is mixed in this case
+		for partitionType, count := range partitionCountMap {
+			if count > 0 {
+				resources = append(resources, partitionType)
+			}
+		}
+	}
+
+	return resources
+}
+
+// GetOptions returns the device plugin options supported for the resource
+func (i *AMDGPUKFDImpl) GetOptions(ctx types.DevicePluginContext) (*pluginapi.DevicePluginOptions, error) {
+
+	if i.initErr != nil {
+		return nil, i.initErr
+	}
+
+	if ctx.GetAllocatorError() {
+		return &pluginapi.DevicePluginOptions{}, nil
+	}
+	return &pluginapi.DevicePluginOptions{
+		GetPreferredAllocationAvailable: true,
+	}, nil
+}
+
+// Enumerate discovers available devices using the KFD interface
+func (i *AMDGPUKFDImpl) Enumerate(ctx types.DevicePluginContext) ([]*pluginapi.Device, error) {
+
+	if i.initErr != nil {
+		return nil, i.initErr
+	}
+
+	glog.Infof("Found %d AMDGPUs", len(i.deviceMap))
+
+	return i.devList[ctx.ResourceName()], nil
+}
+
+func (i *AMDGPUKFDImpl) convertToPluginDeviceList(resource string) []*pluginapi.Device {
+	devs := make([]*pluginapi.Device, 0, len(i.deviceMap))
+	// Initialize a map to store partitionType based device list
+	resourceTypeDevs := make(map[string][]*pluginapi.Device)
+
+	if i.homogeneous {
+		idx := 0
+		for id, device := range i.deviceMap {
+			dev := &pluginapi.Device{
+				ID:     id,
+				Health: pluginapi.Healthy,
+			}
+			devs[idx] = dev
+			idx++
+
+			numas := []int64{int64(device["numaNode"].(int))}
+			glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
+
+			numaNodes := make([]*pluginapi.NUMANode, len(numas))
+			for j, v := range numas {
+				numaNodes[j] = &pluginapi.NUMANode{
+					ID: int64(v),
+				}
+			}
+
+			dev.Topology = &pluginapi.TopologyInfo{
+				Nodes: numaNodes,
+			}
+		}
+	} else {
+		// Iterate through deviceCountMap and create empty lists for each partitionType whose count is > 0 with variable name same as partitionType
+		for id, device := range i.deviceMap {
+			dev := &pluginapi.Device{
+				ID:     id,
+				Health: pluginapi.Healthy,
+			}
+			// Append a device belonging to a certain partition type to its respective list
+			partitionType := device["computePartitionType"].(string) + "_" + device["memoryPartitionType"].(string)
+			resourceTypeDevs[partitionType] = append(resourceTypeDevs[partitionType], dev)
+
+			numas := []int64{int64(device["numaNode"].(int))}
+			glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
+
+			numaNodes := make([]*pluginapi.NUMANode, len(numas))
+			for j, v := range numas {
+				numaNodes[j] = &pluginapi.NUMANode{
+					ID: int64(v),
+				}
+			}
+
+			dev.Topology = &pluginapi.TopologyInfo{
+				Nodes: numaNodes,
+			}
+		}
+		// Send the appropriate list of devices based on the partitionType
+		if devList, exists := resourceTypeDevs[resource]; exists {
+			devs = devList
+		}
+	}
+
+	return devs
+}
+
+// Allocate returns allocation details for container-based workloads using KFD
+func (i *AMDGPUKFDImpl) Allocate(ctx types.DevicePluginContext, r *pluginapi.AllocateRequest) (resp *pluginapi.AllocateResponse, err error) {
+
+	if i.initErr != nil {
+		return nil, i.initErr
+	}
+
+	var response pluginapi.AllocateResponse
+	var car pluginapi.ContainerAllocateResponse
+	var dev *pluginapi.DeviceSpec
+
+	for _, req := range r.ContainerRequests {
+		car = pluginapi.ContainerAllocateResponse{}
+
+		// Currently, there are only 1 /dev/kfd per nodes regardless of the # of GPU available
+		// for compute/rocm/HSA use cases
+		dev = new(pluginapi.DeviceSpec)
+		dev.HostPath = "/dev/kfd"
+		dev.ContainerPath = "/dev/kfd"
+		dev.Permissions = "rw"
+		car.Devices = append(car.Devices, dev)
+
+		for _, id := range req.DevicesIDs {
+			glog.Infof("Allocating device ID: %s", id)
+
+			for k, v := range i.deviceMap[id] {
+				// Map struct previously only had 'card' and 'renderD' and only those are paths to be appended as before
+				if k != "card" && k != "renderD" {
+					continue
+				}
+				devpath := fmt.Sprintf("/dev/dri/%s%d", k, v)
+				dev = new(pluginapi.DeviceSpec)
+				dev.HostPath = devpath
+				dev.ContainerPath = devpath
+				dev.Permissions = "rw"
+				car.Devices = append(car.Devices, dev)
+			}
+		}
+
+		response.ContainerResponses = append(response.ContainerResponses, &car)
+	}
+
+	return &response, nil
+}
+
+// GetPreferredAllocation returns the preferred allocation response for a given resource and request
+func (i *AMDGPUKFDImpl) GetPreferredAllocation(ctx types.DevicePluginContext, req *pluginapi.PreferredAllocationRequest) (resp *pluginapi.PreferredAllocationResponse, err error) {
+
+	if i.initErr != nil {
+		return nil, i.initErr
+	}
+
+	response := &pluginapi.PreferredAllocationResponse{}
+	for _, req := range req.ContainerRequests {
+		allocated_ids, err := ctx.GetAllocator().Allocate(req.AvailableDeviceIDs, req.MustIncludeDeviceIDs, int(req.AllocationSize))
+		if err != nil {
+			glog.Errorf("unable to get preferred allocation list. Error:%v", err)
+			return nil, fmt.Errorf("unable to get preferred allocation list. Error:%v", err)
+		}
+		resp := &pluginapi.ContainerPreferredAllocationResponse{
+			DeviceIDs: allocated_ids,
+		}
+		response.ContainerResponses = append(response.ContainerResponses, resp)
+	}
+	return response, nil
+}
+
+// UpdateHealth returns a health status for the devices of a given resource
+func (i *AMDGPUKFDImpl) UpdateHealth(ctx types.DevicePluginContext) (devices []*pluginapi.Device, err error) {
+
+	if i.initErr != nil {
+		return nil, i.initErr
+	}
+
+	var health = pluginapi.Unhealthy
+
+	if simpleHealthCheck() {
+		health = pluginapi.Healthy
+	}
+
+	devs, ok := i.devList[ctx.ResourceName()]
+	// update with per device GPU health status
+	if i.homogeneous {
+		exporter.PopulatePerGPUDHealth(devs, health)
+	} else {
+		if ok {
+			exporter.PopulatePerGPUDHealth(devs, health)
+		}
+	}
+
+	return devs, nil
+}
 
 // FamilyID to String convert AMDGPU_FAMILY_* into string
 // AMDGPU_FAMILY_* as defined in https://github.com/torvalds/linux/blob/master/include/uapi/drm/amdgpu_drm.h#L986
@@ -125,7 +429,7 @@ func GetDevIdsFromTopology(topoRootParam ...string) map[int]string {
 			continue
 		}
 
-		// Fetch unique_id value from properties file. 
+		// Fetch unique_id value from properties file.
 		// This unique_id is the same for the real gpu as well as its partitions so it will be used to associate the partitions to the real gpu
 		devID, e := ParseTopologyPropertiesString(nodeFile, topoUniqueIdRe)
 		if e != nil {
@@ -279,10 +583,9 @@ func UniquePartitionConfigCount(devices map[string]map[string]interface{}) map[s
 	return partitionCountMap
 }
 
-func IsHomogeneous() bool {
-	gpus := GetAMDGPUs()
-	partitionCountMap := UniquePartitionConfigCount(gpus)
-
+// IsHomogeneous checks if the device map is homogeneous based on the partition types
+func IsHomogeneous(deviceMap map[string]map[string]interface{}) bool {
+	partitionCountMap := UniquePartitionConfigCount(deviceMap)
 	// Homogeneous if the map is empty or contains exactly one partition type
 	return len(partitionCountMap) <= 1
 }
@@ -461,27 +764,27 @@ func ParseTopologyProperties(path string, re *regexp.Regexp) (int64, error) {
 // The format is usually one entry per line <name> <value>.  Examples in
 // testdata/topology-parsing/.
 func ParseTopologyPropertiesString(path string, re *regexp.Regexp) (string, error) {
-    f, e := os.Open(path)
-    if e != nil {
-        return "", e
-    }
+	f, e := os.Open(path)
+	if e != nil {
+		return "", e
+	}
 
-    e = errors.New("Topology property not found.  Regex: " + re.String())
-    v := ""
-    scanner := bufio.NewScanner(f)
-    for scanner.Scan() {
-        m := re.FindStringSubmatch(scanner.Text())
-        if m == nil {
-            continue
-        }
+	e = errors.New("Topology property not found.  Regex: " + re.String())
+	v := ""
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		m := re.FindStringSubmatch(scanner.Text())
+		if m == nil {
+			continue
+		}
 
-        v = m[1]
-        e = nil
-        break
-    }
-    f.Close()
+		v = m[1]
+		e = nil
+		break
+	}
+	f.Close()
 
-    return v, e
+	return v, e
 }
 
 var fwVersionRe = regexp.MustCompile(`(\w+) feature version: (\d+), firmware version: (0x[0-9a-fA-F]+)`)
@@ -556,4 +859,91 @@ func GetNodeIdsFromTopology(topoRootParam ...string) map[int]int {
 	}
 
 	return renderNodeIds
+}
+
+func simpleHealthCheck() bool {
+	entries, err := filepath.Glob("/sys/class/kfd/kfd/topology/nodes/*/properties")
+	if err != nil {
+		glog.Errorf("Error finding properties files: %v", err)
+		return false
+	}
+
+	for _, propFile := range entries {
+		f, err := os.Open(propFile)
+		if err != nil {
+			glog.Errorf("Error opening %s: %v", propFile, err)
+			continue
+		}
+		defer f.Close()
+
+		var cpuCores, gfxVersion int
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.HasPrefix(line, "cpu_cores_count") {
+				parts := strings.Fields(line)
+				if len(parts) == 2 {
+					cpuCores, _ = strconv.Atoi(parts[1])
+				}
+			} else if strings.HasPrefix(line, "gfx_target_version") {
+				parts := strings.Fields(line)
+				if len(parts) == 2 {
+					gfxVersion, _ = strconv.Atoi(parts[1])
+				}
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			glog.Warningf("Error scanning %s: %v", propFile, err)
+			continue
+		}
+
+		if cpuCores == 0 && gfxVersion > 0 {
+			// Found a GPU
+			return true
+		}
+	}
+
+	glog.Warning("No GPU nodes found via properties")
+	return false
+}
+
+var topoSIMDre = regexp.MustCompile(`simd_count\s(\d+)`)
+
+func countGPUDevFromTopology(topoRootParam ...string) int {
+	topoRoot := "/sys/class/kfd/kfd"
+	if len(topoRootParam) == 1 {
+		topoRoot = topoRootParam[0]
+	}
+
+	count := 0
+	var nodeFiles []string
+	var err error
+	if nodeFiles, err = filepath.Glob(topoRoot + "/topology/nodes/*/properties"); err != nil {
+		glog.Fatalf("glob error: %s", err)
+		return count
+	}
+
+	for _, nodeFile := range nodeFiles {
+		glog.Info("Parsing " + nodeFile)
+		f, e := os.Open(nodeFile)
+		if e != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			m := topoSIMDre.FindStringSubmatch(scanner.Text())
+			if m == nil {
+				continue
+			}
+
+			if v, _ := strconv.Atoi(m[1]); v > 0 {
+				count++
+				break
+			}
+		}
+		f.Close()
+	}
+	return count
 }
