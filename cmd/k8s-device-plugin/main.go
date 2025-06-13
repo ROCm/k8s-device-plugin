@@ -86,7 +86,8 @@ func main() {
 		name    string
 		creator func(params map[string]interface{}) (types.DeviceImpl, error)
 	}{
-		{types.Container, amdgpu.NewGPUKFDImpl}, // Container-based implementation using ROCm/KFD
+		{types.Container, amdgpu.NewGPUKFDImpl},    // Container-based implementation using ROCm/KFD
+		{types.PFPassthrough, amdgpu.NewGPUPFImpl}, // PF passthrough implementation
 	}
 
 	if driverType != "" {
