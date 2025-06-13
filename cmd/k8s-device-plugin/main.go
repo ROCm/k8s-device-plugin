@@ -87,6 +87,7 @@ func main() {
 		creator func(params map[string]interface{}) (types.DeviceImpl, error)
 	}{
 		{types.Container, amdgpu.NewGPUKFDImpl},    // Container-based implementation using ROCm/KFD
+		{types.VFPassthrough, amdgpu.NewGPUVFImpl}, // SR-IOV VF passthrough implementation
 		{types.PFPassthrough, amdgpu.NewGPUPFImpl}, // PF passthrough implementation
 	}
 
