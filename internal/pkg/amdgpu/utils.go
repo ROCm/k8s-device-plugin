@@ -1,5 +1,5 @@
 /**
- * Copyright 2018 Advanced Micro Devices, Inc.  All rights reserved.
+ * Copyright 2025 Advanced Micro Devices, Inc.  All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,17 +14,19 @@
  *  limitations under the License.
 **/
 
-package plugin
+package amdgpu
 
 import (
-	"testing"
+	"os"
+	"github.com/golang/glog"
 )
 
-func TestCountGPUDevFromTopology(t *testing.T) {
-	count := countGPUDevFromTopology("../../../testdata/topology-parsing")
-
-	expCount := 2
-	if count != expCount {
-		t.Errorf("Count was incorrect, got: %d, want: %d.", count, expCount)
+func checkDriver(driverPath string) bool {
+	if _, err := os.Stat(driverPath); err != nil {
+		glog.Errorf("No %s driver loaded", driverPath)
+		return false
 	}
+
+	return true
 }
+
