@@ -276,3 +276,12 @@ func TestRenderDevIdsFromTopology(t *testing.T) {
 		t.Errorf("Want: %s", exp)
 	}
 }
+
+func TestCountGPUDevFromTopology(t *testing.T) {
+	count := countGPUDevFromTopology("../../../testdata/topology-parsing")
+
+	expCount := 2
+	if count != expCount {
+		t.Errorf("Count was incorrect, got: %d, want: %d.", count, expCount)
+	}
+}

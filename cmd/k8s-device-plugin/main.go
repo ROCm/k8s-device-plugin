@@ -21,76 +21,19 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/hwloc"
-	"github.com/ROCm/k8s-device-plugin/internal/pkg/plugin"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/manager"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/types"
 	"github.com/golang/glog"
-	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 )
 
 var gitDescribe string
 
-type ResourceNamingStrategy string
-
-const (
-	StrategySingle ResourceNamingStrategy = "single"
-	StrategyMixed  ResourceNamingStrategy = "mixed"
-)
-
-func ParseStrategy(s string) (ResourceNamingStrategy, error) {
-	switch s {
-	case string(StrategySingle):
-		return StrategySingle, nil
-	case string(StrategyMixed):
-		return StrategyMixed, nil
-	default:
-		return "", fmt.Errorf("invalid resource naming strategy: %s", s)
-	}
-}
-
-func getResourceList(resourceNamingStrategy ResourceNamingStrategy) ([]string, error) {
-	var resources []string
-
-	// Check if the node is homogeneous
-	isHomogeneous := amdgpu.IsHomogeneous()
-	partitionCountMap := amdgpu.UniquePartitionConfigCount(amdgpu.GetAMDGPUs())
-	if len(amdgpu.GetAMDGPUs()) == 0 {
-		return resources, nil
-	}
-	if isHomogeneous {
-		// Homogeneous node will report only "gpu" resource if strategy is single. If strategy is mixed, it will report resources under the partition type name
-		if resourceNamingStrategy == StrategySingle {
-			resources = []string{"gpu"}
-		} else if resourceNamingStrategy == StrategyMixed {
-			if len(partitionCountMap) == 0 {
-				// If partitioning is not supported on the node, we should report resources under "gpu" regardless of the strategy
-				resources = []string{"gpu"}
-			} else {
-				for partitionType, count := range partitionCountMap {
-					if count > 0 {
-						resources = append(resources, partitionType)
-					}
-				}
-			}
-		}
-	} else {
-		// Heterogeneous node reports resources based on partition types if strategy is mixed. Heterogeneous is not allowed if Strategy is single
-		if resourceNamingStrategy == StrategySingle {
-			return resources, fmt.Errorf("Partitions of different styles across GPUs in a node is not supported with single strategy. Please start device plugin with mixed strategy")
-		} else if resourceNamingStrategy == StrategyMixed {
-			for partitionType, count := range partitionCountMap {
-				if count > 0 {
-					resources = append(resources, partitionType)
-				}
-			}
-		}
-	}
-	return resources, nil
-}
-
 func main() {
+	var devImpl types.DeviceImpl
+
 	versions := [...]string{
 		"AMD GPU device plugin for Kubernetes",
 		fmt.Sprintf("%s version %s", os.Args[0], gitDescribe),
@@ -105,12 +48,27 @@ func main() {
 		flag.PrintDefaults()
 	}
 	var pulse int
+	var driverType string
 	var resourceNamingStrategy string
-	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
-	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single or mixed")
+	flag.IntVar(&pulse, types.CmdLinePulse, 0, "time between health check polling in seconds.  Set to 0 to disable.")
+	flag.StringVar(&driverType, types.CmdLineDriverType, "", "Driver type to use: container, vf-passthrough, or pf-passthrough")
+	flag.StringVar(&resourceNamingStrategy, types.CmdLineResNamingStrategy, "single", "Resource strategy to be used: single or mixed")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
-	strategy, err := ParseStrategy(resourceNamingStrategy)
+
+	validateFlags := func(pulse int, driverType, resourceNamingStrategy string) error {
+		if pulse < 0 {
+			return fmt.Errorf("pulse must be a non-negative integer, got %d", pulse)
+		}
+		if driverType != "" && driverType != types.Container && driverType != types.VFPassthrough && driverType != types.PFPassthrough {
+			return fmt.Errorf("invalid driver_type provided: %s, supported values are container, vf-passthrough, or pf-passthrough", driverType)
+		}
+		if resourceNamingStrategy != types.ResourceNamingStrategySingle && resourceNamingStrategy != types.ResourceNamingStrategyMixed {
+			return fmt.Errorf("invalid resource_naming_strategy provided: %s, supported values are single or mixed", resourceNamingStrategy)
+		}
+		return nil
+	}
+	err := validateFlags(pulse, driverType, resourceNamingStrategy)
 	if err != nil {
 		glog.Errorf("%v", err)
 		os.Exit(1)
@@ -120,36 +78,43 @@ func main() {
 		glog.Infof("%s", v)
 	}
 
-	l := plugin.AMDGPULister{
-		ResUpdateChan: make(chan dpm.PluginNameList),
-		Heartbeat:     make(chan bool),
-	}
-	manager := dpm.NewManager(&l)
-
-	if pulse > 0 {
-		go func() {
-			glog.Infof("Heart beating every %d seconds", pulse)
-			for {
-				time.Sleep(time.Second * time.Duration(pulse))
-				l.Heartbeat <- true
-			}
-		}()
+	initParams := map[string]interface{}{
+		types.CmdLineResNamingStrategy: resourceNamingStrategy,
 	}
 
-	go func() {
-		// /sys/class/kfd only exists if ROCm kernel/driver is installed
-		var path = "/sys/class/kfd"
-		if _, err := os.Stat(path); err == nil {
-			resources, err := getResourceList(strategy)
-			if err != nil {
-				glog.Errorf("Error occured: %v", err)
-				os.Exit(1)
-			}
-			if len(resources) > 0 {
-				l.ResUpdateChan <- resources
+	deviceImplList := []struct {
+		name    string
+		creator func(params map[string]interface{}) (types.DeviceImpl, error)
+	}{
+		{types.Container, amdgpu.NewGPUKFDImpl},    // Container-based implementation using ROCm/KFD
+		{types.VFPassthrough, amdgpu.NewGPUVFImpl}, // SR-IOV VF passthrough implementation
+		{types.PFPassthrough, amdgpu.NewGPUPFImpl}, // PF passthrough implementation
+	}
+
+	if driverType != "" {
+		// Use the specified driver type
+		for _, impl := range deviceImplList {
+			if impl.name == driverType {
+				devImpl, err = impl.creator(initParams)
+				if err != nil {
+					glog.Errorf("Error instantiating driver type %s: %v", driverType, err)
+					os.Exit(1)
+				}
+				break
 			}
 		}
-	}()
-	manager.Run()
+	} else {
+		// Try implementations in order if no driver type is provided
+		for _, impl := range deviceImplList {
+			devImpl, err = impl.creator(initParams)
+			if err == nil {
+				break
+			}
+			glog.Warningf("%s implementation failed: %v. Trying next...", impl.name, err)
+		}
+	}
 
+	// Start a new plugin manager regardless of implementation status
+	mgr := manager.NewPluginManager(pulse, devImpl)
+	mgr.Run()
 }
