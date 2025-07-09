@@ -100,19 +100,19 @@ func TestBestPolicyAllocator(t *testing.T) {
 				description: "Allocate 1 device",
 				size:        1,
 				required:    nil,
-				expectedIds: []string{"test1"},
+				expectedIds: []string{"test8"},
 			},
 			{
 				description: "Allocate 3 devices",
 				size:        3,
 				required:    nil,
-				expectedIds: []string{"test1", "amdgpu_xcp_1", "amdgpu_xcp_2"},
+				expectedIds: []string{"test8", "amdgpu_xcp_57", "amdgpu_xcp_58"},
 			},
 			{
 				description: "Allocate 5 devices",
 				size:        5,
 				required:    nil,
-				expectedIds: []string{"test1", "amdgpu_xcp_1", "amdgpu_xcp_2", "amdgpu_xcp_3", "amdgpu_xcp_4"},
+				expectedIds: []string{"test8", "amdgpu_xcp_57", "amdgpu_xcp_58", "amdgpu_xcp_59", "amdgpu_xcp_60"},
 			},
 			{
 				description: "Allocate 3 - same numa",
@@ -137,6 +137,26 @@ func TestBestPolicyAllocator(t *testing.T) {
 				size:        8,
 				expectedIds: []string{"test1", "amdgpu_xcp_1", "amdgpu_xcp_2", "amdgpu_xcp_3", "amdgpu_xcp_4", "amdgpu_xcp_5", "amdgpu_xcp_6", "amdgpu_xcp_7"},
 			},
+			{
+				description: "Allocate 7 devices",
+				size:        7,
+				required:    nil,
+				expectedIds: []string{"test8", "amdgpu_xcp_57", "amdgpu_xcp_58", "amdgpu_xcp_59", "amdgpu_xcp_60", "amdgpu_xcp_61", "amdgpu_xcp_62"},
+			},
+			{
+				description: "Allocate 4 devices",
+				size:        4,
+				required:    nil,
+				filtered:    []string{"test8", "amdgpu_xcp_57", "amdgpu_xcp_58"},
+				expectedIds: []string{"amdgpu_xcp_59", "amdgpu_xcp_60", "amdgpu_xcp_61", "amdgpu_xcp_62"},
+			},
+			{
+				description: "Allocate 10 devices",
+				size:        10,
+				required:    nil,
+				filtered:    []string{"test1", "test2", "test3", "test4", "test8", "amdgpu_xcp_57"},
+				expectedIds: []string{"test5", "amdgpu_xcp_33", "amdgpu_xcp_34", "amdgpu_xcp_35", "amdgpu_xcp_36", "amdgpu_xcp_37", "amdgpu_xcp_38", "amdgpu_xcp_39", "amdgpu_xcp_58", "amdgpu_xcp_59"},
+			},
 		},
 	}
 
@@ -156,6 +176,9 @@ func TestBestPolicyAllocator(t *testing.T) {
 				av = tc.available
 			} else {
 				av = allAvailableIds
+			}
+			if len(tc.filtered) > 0 {
+				av = topo.getFilteredDeviceIds(av, tc.filtered)
 			}
 			if len(tc.required) > 0 {
 				req = tc.required

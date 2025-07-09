@@ -16,3 +16,8 @@ Currently we use ```best-effort``` policy as the default allocation policy. This
 - For scenarios that involve partitioned GPUs, partitions from same GPU are assigned better score than partitions from different GPUs.
 
 When an allocation request for size S comes, the allocator calculates all subsets of size S out of available GPUs. For each set, the score is maintained(based on above criteria). Set with lowest score is picked for allocation. At any given time, best-effort policy tries to provide best possible combination of GPUs out of the avilable GPU pool.
+
+Below are few rules followed for allocation requests for X GPU partitions:
+- We try to allocate all partitions from the same GPU if possible.
+- In case there is a GPU with fewer available partitions that can accomodate the request, that GPU is preferred. This maximizes the utilization of GPUs already in use for other workloads and helps avoid fragmentation of unused GPUs.
+- If more than one GPU is needed to accomodate the request, we consider the topology(link type and NUMA affinity) as described above and generate all possible subsets. The subset with the lowest weight among the possible candidates is allocated.
