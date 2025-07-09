@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,6 +69,7 @@ type DeviceSet struct {
 	TotalWeight int
 	LastIdx     int
 	Size        int
+	ParentIds   []int
 }
 
 type DevicePartitions struct {
@@ -266,16 +268,17 @@ func addDeviceToSubsetAndUpdateWeight(subset *DeviceSet, devId, devIdx int, p2pW
 	ids = append(ids, subset.Ids...)
 	ids = append(ids, devId)
 
-	newSubset := NewDeviceSet(ids, currentWeight, devIdx)
+	newSubset := NewDeviceSet(ids, subset.ParentIds, currentWeight, devIdx)
 	return newSubset
 }
 
-func NewDeviceSet(nodeIds []int, weight, lastIdx int) *DeviceSet {
+func NewDeviceSet(nodeIds, parentIds []int, weight, lastIdx int) *DeviceSet {
 	return &DeviceSet{
 		Ids:         nodeIds,
 		TotalWeight: weight,
 		LastIdx:     lastIdx,
 		Size:        len(nodeIds),
+		ParentIds:   parentIds,
 	}
 }
 
@@ -342,7 +345,7 @@ func filterPartitions(partitions map[string]*DevicePartitions, available, requir
 		if len1 == len2 {
 			return outset[i].ParentId < outset[j].ParentId
 		}
-		return len1 > len2
+		return len1 < len2
 	})
 	return outset
 }
@@ -360,14 +363,19 @@ func getCandidateDeviceSubsets(allDevPartitions map[string]*DevicePartitions, to
 		return available[i].NodeId < available[j].NodeId
 	})
 
+	// filterPartitions - partitions from same gpu are grouped into one set.
+	// the sets are sorted in ascending order of partitions available for allocation.
 	devPartitions := filterPartitions(allDevPartitions, available, required)
 	newSize := size - len(required)
 	subsetsTemp := make([]*DeviceSet, 0)
 	subsetsFinal := make([]*DeviceSet, 0)
 	// if the requested size is less than available partitions of a single gpu, try to allocate all from same gpu
+	// subsetsFinal - contains candidate set that has requested number of gpus/partitions
+	// subsetsTemp - if one gpu can not suffice requested number of partitions, we store in subsetsTemp
 	for idx, partition := range devPartitions {
 		ids := []int{partition.Ids[0]}
-		devset := NewDeviceSet(ids, 0, idx)
+		parentIds := []int{idx}
+		devset := NewDeviceSet(ids, parentIds, 0, idx)
 		if newSize == 1 {
 			for _, req := range required {
 				devset = addDeviceToSubsetAndUpdateWeight(devset, req.NodeId, idx, p2pWeights)
@@ -392,15 +400,29 @@ func getCandidateDeviceSubsets(allDevPartitions map[string]*DevicePartitions, to
 			subsetsTemp = append(subsetsTemp, devset)
 		}
 	}
+	// for each subsetsTemp, we loop over all the devPartitions
+	// pick partitions from other gpu until the subsetsTemp has requested number of gpus/partitions
 	for {
 		if len(subsetsTemp) == 0 {
 			break
 		}
 		currentSubset := subsetsTemp[0]
 		subsetsTemp = subsetsTemp[1:]
-		start := currentSubset.LastIdx + 1
-		for idx := start; idx < len(devPartitions); idx++ {
-			devset := NewDeviceSet(currentSubset.Ids, currentSubset.TotalWeight, currentSubset.LastIdx)
+		if len(currentSubset.ParentIds) == len(devPartitions) {
+			continue
+		}
+		// devPartitions is sorted in ascending order of avilable partitions.
+		// when we loop over to pick a candidate set, preference is given to gpus with lesser partitions available.
+		// this way we can avoid fragmentation of gpus
+		for idx := 0; idx < len(devPartitions); idx++ {
+			// if current subset already has partitions from the current gpu, skip adding them again
+			if slices.Contains(currentSubset.ParentIds, idx) {
+				continue
+			}
+			var parentIds []int
+			parentIds = append(parentIds, currentSubset.ParentIds...)
+			parentIds = append(parentIds, idx)
+			devset := NewDeviceSet(currentSubset.Ids, parentIds, currentSubset.TotalWeight, currentSubset.LastIdx)
 			for _, id := range devPartitions[idx].Ids {
 				devset = addDeviceToSubsetAndUpdateWeight(devset, id, idx, p2pWeights)
 				if devset.Size == newSize {

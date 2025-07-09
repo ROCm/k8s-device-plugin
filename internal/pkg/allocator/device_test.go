@@ -18,6 +18,7 @@ package allocator
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"testing"
 )
@@ -30,6 +31,7 @@ type testInfo struct {
 	startNodeId           int
 	endNodeId             int
 	available             []string
+	filtered              []string
 	required              []string
 	size                  int
 	expectedIds           []string
@@ -59,6 +61,17 @@ func (ti *testInfo) getTestDevices() []*Device {
 				DevId:    strconv.Itoa(i),
 			})
 			nodeId = nodeId + 1
+		}
+	}
+	return res
+}
+
+func (ti *testInfo) getFilteredDeviceIds(available, filter []string) []string {
+	var res []string
+	for _, av := range available {
+		idx := slices.Index(filter, av)
+		if idx == -1 {
+			res = append(res, av)
 		}
 	}
 	return res
@@ -135,7 +148,7 @@ func TestGetSubsetsMethod(t *testing.T) {
 		{
 			description:           "Get candidates with size 12",
 			size:                  12,
-			expectedSubsetsLength: 6,
+			expectedSubsetsLength: 12,
 		},
 	}
 	for _, tcase := range testcases {
