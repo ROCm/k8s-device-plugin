@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -347,7 +348,7 @@ var labelGenerators = map[string]func(map[string]map[string]interface{}) map[str
 	},
 	"compute-memory-partition": func(gpus map[string]map[string]interface{}) map[string]string {
 		partitionCountMap := amdgpu.UniquePartitionConfigCount(gpus)
-		isHomogeneous := amdgpu.IsHomogeneous()
+		isHomogeneous := amdgpu.IsHomogeneous(gpus)
 		if isHomogeneous {
 			for partitionType, count := range partitionCountMap {
 				if count > 0 {
@@ -368,13 +369,45 @@ var labelGenerators = map[string]func(map[string]map[string]interface{}) map[str
 		pfx := createLabelPrefix("memory-partitioning-supported", false)
 		return map[string]string{pfx: val}
 	},
+	"mode": func(gpus map[string]map[string]interface{}) map[string]string {
+		labels := make(map[string]string, 2)
+		labels[createLabelPrefix("mode", true)] = types.Container
+		labels[createLabelPrefix("mode", false)] = types.Container
+		return labels
+	},
 }
 
-var labelProperties = make(map[string]*bool, len(labelGenerators))
+var labelProperties = make(map[string]*bool, len(types.SupportedLabels))
 
-func generateLabels(lblProps map[string]*bool) map[string]string {
+func generateLabels(lblProps map[string]*bool, driverType string) map[string]string {
+	switch driverType {
+	case types.Container:
+		return generateContainerLabels(lblProps)
+	case types.VFPassthrough:
+		return generateSRIOVVFLabels(lblProps)
+	case types.PFPassthrough:
+		return generatePFLabels(lblProps)
+	default:
+		// Best effort: try container first, then VF, then PF.
+		labels := generateContainerLabels(lblProps)
+		if len(labels) == 0 {
+			labels = generateSRIOVVFLabels(lblProps)
+		}
+		if len(labels) == 0 {
+			labels = generatePFLabels(lblProps)
+		}
+		return labels
+	}
+}
+
+func generateContainerLabels(lblProps map[string]*bool) map[string]string {
 	results := make(map[string]string, len(labelGenerators))
 	gpus := amdgpu.GetAMDGPUs()
+
+	if len(gpus) == 0 {
+		log.Info("No AMD GPUs found, skipping label generation")
+		return results
+	}
 
 	for l, f := range labelGenerators {
 		if !*lblProps[l] {
@@ -385,6 +418,82 @@ func generateLabels(lblProps map[string]*bool) map[string]string {
 			results[k] = v
 		}
 	}
+
+	return results
+}
+
+func generateSRIOVVFLabels(lblProps map[string]*bool) map[string]string {
+	results := make(map[string]string)
+
+	// Retrieve VF mapping from the amdgpu package
+	vfMapping, err := amdgpu.GetVFMapping()
+	if err != nil || len(vfMapping) < 1 {
+		return results
+	}
+
+	// Driver details
+	gimVersion, gimSrcVersion, err := amdgpu.GetGIMVersions()
+	if err != nil {
+		return results
+	}
+
+	if *lblProps["driver-version"] {
+		results[createLabelPrefix("driver-version", false)] = gimVersion
+	}
+
+	if *lblProps["driver-src-version"] {
+		results[createLabelPrefix("driver-src-version", false)] = gimSrcVersion
+	}
+
+	if *lblProps["mode"] {
+		results[createLabelPrefix("mode", false)] = types.VFPassthrough
+		results[createLabelPrefix("mode", true)] = types.VFPassthrough
+	}
+
+	if *lblProps["device-id"] {
+		// Aggregate counts
+		deviceMap := map[string]int{}
+		for _, vfList := range vfMapping {
+			for _, vfInfo := range vfList {
+				deviceMap[vfInfo.ID]++
+			}
+		}
+
+		for k, v := range createLabels("device-id", deviceMap) {
+			results[k] = v
+		}
+	}
+
+	return results
+}
+
+func generatePFLabels(lblProps map[string]*bool) map[string]string {
+	results := make(map[string]string)
+
+	// Retrieve PF mapping from the amdgpu package
+	pfMapping, err := amdgpu.GetPFMapping()
+	if err != nil || len(pfMapping) < 1 {
+		return results
+	}
+
+	if *lblProps["mode"] {
+		results["amd.com/gpu.mode"] = types.PFPassthrough
+	}
+
+	if *lblProps["device-id"] {
+		// Aggregate counts
+		deviceMap := map[string]int{}
+		for _, pfList := range pfMapping {
+			for _, pfInfo := range pfList {
+				deviceMap[pfInfo.ID]++
+			}
+		}
+
+		for k, v := range createLabels("device-id", deviceMap) {
+			results[k] = v
+		}
+	}
+
 	return results
 }
 
@@ -396,7 +505,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	for k := range labelGenerators {
+	var driverType string
+	flag.StringVar(&driverType, "driver_type", "", "Driver type to use: container, vf-passthrough, or pf-passthrough")
+
+	for _, k := range types.SupportedLabels {
 		labelProperties[k] = flag.Bool(k, false, "Set this to label nodes with "+k+" properties")
 	}
 
@@ -421,7 +533,7 @@ func main() {
 	c, err := controller.New("amdgpu-node-labeller", mgr, controller.Options{
 		Reconciler: &reconcileNodeLabels{client: mgr.GetClient(),
 			log:    log.WithName("reconciler"),
-			labels: generateLabels(labelProperties)},
+			labels: generateLabels(labelProperties, driverType)},
 	})
 	if err != nil {
 		entryLog.Error(err, "unable to set up individual controller")
