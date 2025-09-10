@@ -97,10 +97,9 @@ func createLabels(kind string, entries map[string]int) map[string]string {
 
 	prefix = createLabelPrefix(kind, false)
 	for k, v := range entries {
+		labels[fmt.Sprintf("%s.%s", prefix, k)] = strconv.Itoa(v)
 		if len(entries) == 1 {
 			labels[prefix] = k
-		} else {
-			labels[fmt.Sprintf("%s.%s", prefix, k)] = strconv.Itoa(v)
 		}
 	}
 
