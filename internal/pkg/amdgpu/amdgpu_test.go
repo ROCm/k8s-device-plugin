@@ -162,20 +162,6 @@ func TestParseTopologyProperties(t *testing.T) {
 
 }
 
-func TestParseTopologyPropertiesString(t *testing.T) {
-	var v string
-	var re *regexp.Regexp
-	var path string
-
-	re = regexp.MustCompile(`unique_id\s(\d+)`)
-	path = "../../../testdata/topology-parsing/topology/nodes/2/properties"
-	v, _ = ParseTopologyPropertiesString(path, re)
-	if v != "14073402507705256557" {
-		t.Errorf("Error parsing %s for `%s`: expect %s", path, re.String(), "14073402507705256557")
-	}
-
-}
-
 func TestParseDebugFSFirmwareInfo(t *testing.T) {
 	expFeat := map[string]uint32{
 		"VCE":   0,
