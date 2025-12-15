@@ -19,6 +19,15 @@ spec:
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
+      initContainers:
+      - name: amdgpu-dp-init-cntr
+        image: busybox
+        command: ['sh', '-c', 'while [ ! -d /sys/class/kfd ] || [ ! -d /sys/module/amdgpu/drivers/ ]; do echo \"amdgpu driver is not loaded \"; sleep 2 ;done;']
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - name: sys
+            mountPath: /sys
       containers:
       - image: rocm/k8s-device-plugin
         name: amdgpu-dp-cntr

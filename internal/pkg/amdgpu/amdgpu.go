@@ -148,8 +148,7 @@ func GetDevIdsFromTopology(topoRootParam ...string) map[int]string {
 // GetAMDGPUs return a map of AMD GPU on a node identified by the part of the pci address
 func GetAMDGPUs() map[string]map[string]interface{} {
 	if _, err := os.Stat("/sys/module/amdgpu/drivers/"); err != nil {
-		glog.Warningf("amdgpu driver unavailable: %s", err)
-		return make(map[string]map[string]interface{})
+		glog.Fatalf("amdgpu driver unavailable. exiting with exit code 2. error: %s", err)
 	}
 
 	//ex: /sys/module/amdgpu/drivers/pci:amdgpu/0000:19:00.0

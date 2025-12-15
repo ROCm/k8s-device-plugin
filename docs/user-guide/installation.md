@@ -37,6 +37,22 @@ kubectl create -f k8s-ds-amdgpu-dp.yaml
 kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml
 ```
 
+### Option 1.a: Standard Device Plugin with Init Container
+
+Use this option when deploying the Device Plugin in environments where the amdgpu driver may not be loaded before the plugin starts. This deployment has an init container that waits for amdgpu driver to load before launching the main plugin container.
+
+**Using Pre-defined YAML File**: You can use the pre-defined YAML file provided in this repository. Run the following command:
+
+```bash
+kubectl create -f k8s-ds-amdgpu-dp-with-init-container.yaml
+```
+
+**Pulling from the Web**: Alternatively, you can directly pull the YAML file from the repository:
+
+```bash
+kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp-with-init-container.yaml
+```
+
 ### Option 2: Device Plugin with Health Checks
 
 Use this option if you need GPU health monitoring capabilities in addition to GPU allocation.
