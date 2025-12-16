@@ -6,8 +6,54 @@ spec:
   containers:
   - name: rocm-test-container
     image: rocm/tensorflow:latest
-    command: ["sh", "-c", "rocm-smi && python3 -c 'import tensorflow as tf; print(\"Num GPUs Available: \", len(tf.config.list_physical_devices(\"GPU\")))'; sleep 3600"]
+    workingDir: /root
+    env:
+    - name: HIP_VISIBLE_DEVICES
+      value: "0" # # 0,1,2,...,n for running on GPU and select the GPUs, -1 for running on CPU
+    command: ["python", "-c"]
+    args:
+      - |
+        import tensorflow as tf
+        import time
+        import numpy as np
+
+        print("TensorFlow Version:", tf.__version__)
+        print("Available Devices:", tf.config.list_physical_devices())
+
+        # List of models to benchmark
+        models = {
+            "ResNet50": tf.keras.applications.ResNet50,
+            "MobileNetV2": tf.keras.applications.MobileNetV2,
+            "InceptionV3": tf.keras.applications.InceptionV3
+        }
+        batch_size = 32
+        num_runs = 50
+        input_shape = (224, 224, 3)
+
+        for name, constructor in models.items():
+            print(f"\nBenchmarking {name}...")
+            # Create model without pretrained weights
+            model = constructor(weights=None, input_shape=input_shape)
+            # Generate dummy input
+            dummy_input = tf.random.uniform([batch_size, *input_shape])
+
+            # Warm-up phase
+            print("Warm-up run...")
+            _ = model(dummy_input)
+
+            # Benchmark phase
+            start_time = time.time()
+            for _ in range(num_runs):
+                _ = model(dummy_input)
+            end_time = time.time()
+
+            # Calculate and print results
+            avg_time = (end_time - start_time) / num_runs
+            images_per_sec = batch_size / avg_time
+            print(f"Average time per run: {avg_time:.4f} seconds")
+            print(f"Images per second: {images_per_sec:.2f}")
     resources:
-      limits:
+      requests:
         amd.com/gpu: 1
-  restartPolicy: Never
+      limits:
+        amd.com/gpu: 1 # requesting a GPU
