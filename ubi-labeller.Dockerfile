@@ -29,6 +29,12 @@ ADD . /go/src/github.com/ROCm/k8s-device-plugin
 WORKDIR /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller
 RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/ROCm/k8s-device-plugin/ describe --always --long --dirty)"
+RUN wget https://gitlab.freedesktop.org/mesa/libdrm/-/raw/main/data/amdgpu.ids
+RUN echo "74B9,   00, AMD Instinct MI325X VF" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "738E,   01, AMD Instinct MI100" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "73A2,   C0, AMD Radeon Pro W6900X" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "73AB,   C0, AMD Radeon Pro W6800X" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "74BC,   00, AMD Instinct MI308X HF VF" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
 LABEL \
@@ -45,4 +51,5 @@ RUN mkdir -p /licenses && \
 ADD ./LICENSE /licenses/LICENSE
 WORKDIR /root/
 COPY --from=builder /go/bin/k8s-node-labeller .
+COPY --from=builder /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids /usr/share/libdrm/amdgpu.ids
 CMD ["./k8s-node-labeller"]
