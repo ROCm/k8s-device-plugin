@@ -536,3 +536,17 @@ func GetNodeIdsFromTopology(topoRootParam ...string) map[int]int {
 
 	return renderNodeIds
 }
+
+func GetCardProductName(cardName string) (string, error) {
+	devHandle, err := openAMDGPU(cardName)
+	if err != nil {
+		return "", err
+	}
+	defer C.amdgpu_device_deinitialize(devHandle)
+	productNameStr := C.amdgpu_get_marketing_name(devHandle)
+	if productNameStr == nil {
+		return "", fmt.Errorf("Failed to get product name for %s", cardName)
+	}
+	productName := C.GoString(productNameStr)
+	return productName, nil
+}

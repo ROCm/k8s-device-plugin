@@ -215,9 +215,17 @@ var labelGenerators = map[string]func(map[string]map[string]interface{}) map[str
 			b, err := ioutil.ReadFile(prodnamePath)
 			if err != nil {
 				log.Error(err, prodnamePath)
-				continue
 			}
 			prodName := replacer.Replace(strings.TrimSpace(string(b)))
+			// if we are not able to get the product name from sysfs, try to read the value using libdrm
+			if prodName == "" {
+				prodName, err = amdgpu.GetCardProductName(fmt.Sprintf("card%d", v["card"]))
+				if err != nil {
+					log.Error(err, prodnamePath)
+				} else {
+					prodName = replacer.Replace(strings.TrimSpace(prodName))
+				}
+			}
 			if prodName == "" {
 				continue
 			}
