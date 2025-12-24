@@ -8,7 +8,7 @@ dp:
   image:
     repository: docker.io/rocm/k8s-device-plugin
     # Overrides the image tag whose default is the chart appVersion.
-    tag: "1.31.0.7"
+    tag: "1.31.0.9"
   resources: {}
   # Set daemonsets updateStrategy for device plugin
   updateStrategy:
@@ -19,7 +19,7 @@ dp:
 lbl:
   image:
     repository: docker.io/rocm/k8s-device-plugin
-    tag: "labeller-1.31.0.7"
+    tag: "labeller-1.31.0.9"
   serviceAccount:
     annotations: {}
   securityContext:
