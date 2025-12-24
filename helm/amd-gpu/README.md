@@ -1,6 +1,6 @@
 # AMD GPU Helm Chart
 
-![Version: 0.20.0](https://img.shields.io/badge/Version-0.20.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.31.0.7](https://img.shields.io/badge/AppVersion-1.31.0.7-informational?style=flat-square)
+![Version: 0.21.0](https://img.shields.io/badge/Version-0.21.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 1.31.0.9](https://img.shields.io/badge/AppVersion-1.31.0.9-informational?style=flat-square)
 
 A Helm chart for deploying Kubernetes AMD GPU device plugin
 
