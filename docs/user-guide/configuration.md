@@ -27,10 +27,9 @@ The device plugin supports the following command-line flags:
 
 | Flag | Default | Description |
 |-----|------|-------------|
-| `--kubelet-url` | `http://localhost:10250` | The URL of the kubelet for device plugin registration |
-| `--pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
-| `--resource_naming_strategy` | `single` | Resource Naming strategy chosen for k8s resource reporting. |
-| `--driver_type` | `""` | GPU operational mode: `container`, `vf-passthrough`, or `pf-passthrough`. When empty (default), automatic mode detection is used. |
+| `-pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
+| `-resource_naming_strategy` | `single` | Resource naming strategy used for Kubernetes resource reporting. |
+| `-driver_type` | `""` | GPU operational mode: `container`, `vf-passthrough`, or `pf-passthrough`. When empty (default), automatic mode detection is used. |
 
 ### Driver Type and Operational Modes
 
