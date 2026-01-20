@@ -27,9 +27,8 @@ The device plugin supports the following command-line flags:
 
 | Flag | Default | Description |
 |-----|------|-------------|
-| `--kubelet-url` | `http://localhost:10250` | The URL of the kubelet for device plugin registration |
-| `--pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
-| `--resource_naming_strategy` | `single` | Resource Naming strategy chosen for k8s resource reporting. |
+| `-pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
+| `-resource_naming_strategy` | `single` | Resource naming strategy used for Kubernetes resource reporting. |
 
 ## Configuration File
 
