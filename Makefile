@@ -5,7 +5,7 @@ SHELL := /bin/bash
 .SHELLFLAGS := -o pipefail -c
 
 # Image repository and version
-IMAGE_REPO := docker.io/rocm/k8s-device-plugin
+IMAGE_REPO ?= docker.io/rocm/k8s-device-plugin
 IMAGE_VERSION ?= latest
 
 # Image tags based on the repository's tagging scheme
@@ -14,10 +14,10 @@ IMAGE_VERSION ?= latest
 # UBI device plugin: rhubi-latest / rhubi-<version>
 # UBI labeller: labeller-rhubi-latest / labeller-rhubi-<version>
 
-DEVICE_PLUGIN_TAG := $(IMAGE_VERSION)
-LABELLER_TAG := labeller-$(IMAGE_VERSION)
-UBI_DEVICE_PLUGIN_TAG := rhubi-$(IMAGE_VERSION)
-UBI_LABELLER_TAG := labeller-rhubi-$(IMAGE_VERSION)
+DEVICE_PLUGIN_TAG ?= $(IMAGE_VERSION)
+LABELLER_TAG ?= labeller-$(IMAGE_VERSION)
+UBI_DEVICE_PLUGIN_TAG ?= rhubi-$(IMAGE_VERSION)
+UBI_LABELLER_TAG ?= labeller-rhubi-$(IMAGE_VERSION)
 
 # Output directory for tar.gz files
 OUTPUT_DIR ?= ./dist
