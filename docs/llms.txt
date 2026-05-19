@@ -1,0 +1,16 @@
+# AMD GPU Device Plugin for Kubernetes
+
+> Enable AMD GPUs as schedulable resources in Kubernetes clusters. The device plugin implements the Kubernetes Device Plugin API, exposes AMD GPUs as `amd.com/gpu` resources, provides automated node labeling with GPU properties, and supports topology-aware GPU allocation for optimal workload performance.
+
+## User guide
+
+- [Installation](https://instinct.docs.amd.com/projects/k8s-device-plugin/en/latest/user-guide/installation.html): Install the AMD GPU device plugin on a Kubernetes cluster using kubectl or Helm, with options for standard deployment, init container, health check monitoring, or the AMD GPU Operator.
+- [Configuration](https://instinct.docs.amd.com/projects/k8s-device-plugin/en/latest/user-guide/configuration.html): Configure the device plugin using environment variables, command-line flags, and YAML configuration files, including resource naming strategies for GPU partitioning.
+- [Example workloads](https://instinct.docs.amd.com/projects/k8s-device-plugin/en/latest/user-guide/examples.html): Run PyTorch and JAX workloads on AMD GPUs in Kubernetes, including single-GPU, multi-GPU, and non-privileged pod configurations.
+- [Resource allocation](https://instinct.docs.amd.com/projects/k8s-device-plugin/en/latest/user-guide/resource-allocation.html): Understand the best-effort topology-aware GPU allocation policy, which selects GPU sets based on XGMI/PCIe link type, NUMA affinity, and partition locality.
+
+## Contributing
+
+- [Development guidelines](https://instinct.docs.amd.com/projects/k8s-device-plugin/en/latest/contributing/development.html): Set up a development environment, follow the branching and pull request workflow, and understand the code review process for contributing to the device plugin.
+
+---
