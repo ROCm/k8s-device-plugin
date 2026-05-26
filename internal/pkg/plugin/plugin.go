@@ -319,6 +319,10 @@ loop:
 				}
 			}
 
+		case <-s.Context().Done():
+			glog.Errorf("ListAndWatch stream disconnected: %v, exiting to trigger re-registration", s.Context().Err())
+			os.Exit(1)
+
 		case <-p.signal:
 			glog.Infof("Received signal, exiting")
 			break loop
