@@ -105,16 +105,24 @@ func main() {
 		flag.PrintDefaults()
 	}
 	var pulse int
+	var replicas int
 	var resourceNamingStrategy string
 	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
 	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single or mixed")
-	// this is also needed to enable glog usage in dpm
+	flag.IntVar(&replicas, "replicas", 1, "number of virtual GPU devices per physical GPU for time-slicing. Must be >= 1.")
 	flag.Parse()
 	strategy, err := ParseStrategy(resourceNamingStrategy)
 	if err != nil {
 		glog.Errorf("%v", err)
 		os.Exit(1)
 	}
+
+
+
+	if replicas < 1 {
+		glog.Fatalf("invalid --replicas value %d: must be >= 1", replicas)
+	}
+	glog.Infof("GPU time-slicing replicas: %d", replicas)
 
 	for _, v := range versions {
 		glog.Infof("%s", v)
@@ -123,6 +131,7 @@ func main() {
 	l := plugin.AMDGPULister{
 		ResUpdateChan: make(chan dpm.PluginNameList),
 		Heartbeat:     make(chan bool),
+		Replicas:      replicas,
 	}
 	manager := dpm.NewManager(&l)
 
