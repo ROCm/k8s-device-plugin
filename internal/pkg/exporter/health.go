@@ -82,8 +82,12 @@ func getGPUHealth() (hMap map[string]string, err error) {
 }
 
 // PopulatePerGPUDHealth populate the per gpu health status if available, 
-// else return simple health status
-func PopulatePerGPUDHealth(devs []*pluginapi.Device, defaultHealth string) {
+// else return simple health status.
+// An optional resolveID function can be provided to map virtual device IDs
+// (e.g. "0000:03:00.0-slice-2") back to their physical device IDs for
+// health map lookups. This supports GPU time-slicing where multiple virtual
+// devices share a single physical GPU.
+func PopulatePerGPUDHealth(devs []*pluginapi.Device, defaultHealth string, resolveID ...func(string) string) {
     var hasHealthSvc = false
     hMap, err := getGPUHealth()
     if err == nil {
@@ -97,6 +101,15 @@ func PopulatePerGPUDHealth(devs []*pluginapi.Device, defaultHealth string) {
             // only use if we have the device id entry
             if gpuHealth, ok := hMap[devs[i].ID]; ok {
                 devs[i].Health = gpuHealth
+            } else if len(resolveID) > 0 && resolveID[0] != nil {
+                // Try resolving virtual ID to physical ID for health lookup
+                physicalID := resolveID[0](devs[i].ID)
+                if gpuHealth, ok := hMap[physicalID]; ok {
+                    devs[i].Health = gpuHealth
+                } else {
+                    // revert to simpleHealthCheck if not found
+                    devs[i].Health = defaultHealth
+                }
             } else {
                 // revert to simpleHealthCheck if not found
                 devs[i].Health = defaultHealth
@@ -104,3 +117,4 @@ func PopulatePerGPUDHealth(devs []*pluginapi.Device, defaultHealth string) {
         }
     }
 }
+

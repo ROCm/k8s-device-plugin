@@ -106,8 +106,10 @@ func main() {
 	}
 	var pulse int
 	var resourceNamingStrategy string
+	var configFile string
 	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
 	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single or mixed")
+	flag.StringVar(&configFile, "config", "", "path to the YAML config file (e.g. /etc/amdgpu/config.yaml)")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
 	strategy, err := ParseStrategy(resourceNamingStrategy)
@@ -116,6 +118,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	cfg, err := plugin.LoadConfig(configFile)
+	if err != nil {
+		glog.Fatalf("Failed to load config: %v", err)
+	}
+	glog.Infof("GPU time-slicing replicas: %d", cfg.GPU.Replicas)
+
 	for _, v := range versions {
 		glog.Infof("%s", v)
 	}
@@ -123,6 +131,7 @@ func main() {
 	l := plugin.AMDGPULister{
 		ResUpdateChan: make(chan dpm.PluginNameList),
 		Heartbeat:     make(chan bool),
+		Replicas:      cfg.GPU.Replicas,
 	}
 	manager := dpm.NewManager(&l)
 
