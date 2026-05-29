@@ -237,7 +237,15 @@ def generate_combined_markdown(app, exception):
             elif is_prose_line(line):
                 # Strip trailing HTML close tags (e.g. "See the guide.</p>")
                 cleaned = _TRAILING_HTML_CLOSE_RE.sub("", line).rstrip()
-                kept.append(cleaned if cleaned.strip() else line)
+                cleaned_stripped = cleaned.strip()
+                if not cleaned_stripped:
+                    # Entire line was HTML close tags — keep original (shouldn't
+                    # normally reach here since _is_prose_line filters HTML).
+                    kept.append(line)
+                elif re.search(r"\w", cleaned_stripped):
+                    # Line has real word content after stripping close tags.
+                    kept.append(cleaned)
+                # else: only punctuation remains (e.g. bare ".") — discard.
         cleaned = "\n".join(kept)
 
         combined.append(f"\n\n---\n\n# {relative}\n")
