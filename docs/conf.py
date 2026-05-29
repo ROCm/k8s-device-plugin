@@ -78,6 +78,9 @@ _ANCHOR_LABEL_RE = re.compile(r"^\(\w[\w-]*\)=$")
 # Matches RST section underlines (e.g. "====", "----", "~~~~")
 _RST_UNDERLINE_RE = re.compile(r"^[=\-~^\"\'#*+]{3,}$")
 
+# Matches RST code block directives (e.g. ".. code-block:: cpp", ".. code:: sh")
+_RST_CODE_BLOCK_RE = re.compile(r"^\.\.\s+(code-block|code|sourcecode)::")
+
 MIN_PROSE_LINES = 10
 
 
@@ -97,14 +100,13 @@ def is_prose_line(line: str) -> bool:
     # Drop MyST/RST anchor labels (e.g. "(some-label)=")
     if _ANCHOR_LABEL_RE.match(stripped):
         return False
-    # Drop lines that contain an HTML tag anywhere (e.g. ".</p>")
-    if re.search(r"</?[a-zA-Z]", stripped):
-        return False
     # Drop RST directives, comments, hyperlink targets, and substitution definitions
     if stripped.startswith(".."):
         return False
-    # Drop RST field list items (e.g. ":type: int") and MyST directive options not in MARKUP_PREFIXES
-    if re.match(r"^:[A-Za-z]", stripped):
+    # Drop RST field list items (e.g. ":type: int") and MyST directive options without
+    # a leading colon (e.g. "align: center"). Excludes inline roles at line start
+    # (e.g. ":cpp:func:`hipMalloc` returns..." or ":ref:`foo <bar>` describes...").
+    if re.match(r"^:[A-Za-z][A-Za-z0-9_-]*:(\s|$)", stripped):
         return False
     # Drop RST section underlines (e.g. "====", "----", "~~~~")
     if _RST_UNDERLINE_RE.match(stripped):
@@ -151,10 +153,32 @@ def generate_combined_markdown(app, exception):
             continue
 
         relative = doc_file.relative_to(docs_root)
-        cleaned = "\n".join(
-            line for line in lines
-            if line.strip() == "" or is_prose_line(line)
-        )
+        in_backtick_fence = False
+        in_rst_code_block = False
+        kept = []
+        for line in lines:
+            stripped = line.strip()
+            # Backtick fences (MyST/Markdown)
+            if stripped.startswith("```"):
+                in_backtick_fence = not in_backtick_fence
+                kept.append(line)
+                continue
+            if in_backtick_fence:
+                kept.append(line)
+                continue
+            # RST code block: exit when a non-blank, non-indented line appears
+            if in_rst_code_block:
+                if not stripped or line[0] in (" ", "\t"):
+                    kept.append(line)
+                    continue
+                in_rst_code_block = False
+            # RST code block: enter on directive line (directive itself is dropped)
+            if _RST_CODE_BLOCK_RE.match(stripped):
+                in_rst_code_block = True
+                continue
+            if not stripped or is_prose_line(line):
+                kept.append(line)
+        cleaned = "\n".join(kept)
 
         combined.append(f"\n\n---\n\n# {relative}\n")
         combined.append(cleaned.strip())
