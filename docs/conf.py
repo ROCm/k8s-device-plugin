@@ -63,7 +63,6 @@ MARKUP_PREFIXES = (
     ":header-rows:",
     ":alt:",
     "+++",
-    "<",
     "-->",
     "{bdg-",
 )
@@ -80,6 +79,17 @@ _RST_UNDERLINE_RE = re.compile(r"^[=\-~^\"\'#*+]{3,}$")
 
 # Matches RST code block directives (e.g. ".. code-block:: cpp", ".. code:: sh")
 _RST_CODE_BLOCK_RE = re.compile(r"^\.\.\s+(code-block|code|sourcecode)::")
+
+# Matches markdown table separator rows (e.g. "|---|---|", "| :--- | ---: |").
+_MD_TABLE_SEP_RE = re.compile(r"^\|[\s|:\-]+\|$")
+
+# Matches RST directives whose indented body should be discarded (e.g. raw HTML).
+_RST_SKIP_BLOCK_RE = re.compile(r"^\.\.\s+raw::")
+
+# Matches HTML tags (e.g. "<div>", "</p>", "<!--") but NOT RST hyperlink URL
+# continuation lines (e.g. "<https://...>`_").  The negative lookahead excludes
+# URL schemes so that multi-line RST inline hyperlinks are preserved.
+_HTML_TAG_RE = re.compile(r"^<(?!https?://|ftp://|mailto:)[a-zA-Z/!]")
 
 MIN_PROSE_LINES = 10
 
@@ -100,13 +110,24 @@ def is_prose_line(line: str) -> bool:
     # Drop MyST/RST anchor labels (e.g. "(some-label)=")
     if _ANCHOR_LABEL_RE.match(stripped):
         return False
+    # Drop markdown table separator rows (e.g. "|---|---|", "| :--- | ---: |")
+    if _MD_TABLE_SEP_RE.match(stripped):
+        return False
+    # Drop HTML tags (e.g. "<div>", "</p>") but keep RST hyperlink URL
+    # continuation lines (e.g. "<https://rocm.docs.amd.com/...>`_")
+    if _HTML_TAG_RE.match(stripped):
+        return False
     # Drop RST directives, comments, hyperlink targets, and substitution definitions
     if stripped.startswith(".."):
         return False
-    # Drop RST field list items (e.g. ":type: int") and MyST directive options without
-    # a leading colon (e.g. "align: center"). Excludes inline roles at line start
-    # (e.g. ":cpp:func:`hipMalloc` returns..." or ":ref:`foo <bar>` describes...").
-    if re.match(r"^:[A-Za-z][A-Za-z0-9_-]*:(\s|$)", stripped):
+    # Drop YAML frontmatter key-value pairs (e.g. "description lang=en": "text")
+    if stripped.startswith('"') and re.match(r'^"[^"]+"\s*:', stripped):
+        return False
+    # Drop RST field list items (e.g. ":type: int") and extended RST meta
+    # options (e.g. ":description lang=en: text"). Excludes inline roles at line
+    # start (e.g. ":cpp:func:`hipMalloc` returns..." or ":ref:`foo <bar>` describes...")
+    # because those are followed by a backtick, not a space or end-of-line.
+    if re.match(r"^:[A-Za-z][A-Za-z0-9_ =-]*:(\s|$)", stripped):
         return False
     # Drop RST section underlines (e.g. "====", "----", "~~~~")
     if _RST_UNDERLINE_RE.match(stripped):
@@ -155,6 +176,7 @@ def generate_combined_markdown(app, exception):
         relative = doc_file.relative_to(docs_root)
         in_backtick_fence = False
         in_rst_code_block = False
+        in_rst_skip_block = False
         kept = []
         for line in lines:
             stripped = line.strip()
@@ -166,12 +188,21 @@ def generate_combined_markdown(app, exception):
             if in_backtick_fence:
                 kept.append(line)
                 continue
+            # RST skip block (e.g. .. raw::): discard all indented content
+            if in_rst_skip_block:
+                if not stripped or line[0] in (" ", "\t"):
+                    continue
+                in_rst_skip_block = False
             # RST code block: exit when a non-blank, non-indented line appears
             if in_rst_code_block:
                 if not stripped or line[0] in (" ", "\t"):
                     kept.append(line)
                     continue
                 in_rst_code_block = False
+            # RST raw block: enter and discard both the directive and its body
+            if _RST_SKIP_BLOCK_RE.match(stripped):
+                in_rst_skip_block = True
+                continue
             # RST code block: enter on directive line (directive itself is dropped)
             if _RST_CODE_BLOCK_RE.match(stripped):
                 in_rst_code_block = True
