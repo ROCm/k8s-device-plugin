@@ -91,6 +91,10 @@ _RST_SKIP_BLOCK_RE = re.compile(r"^\.\.\s+raw::")
 # URL schemes so that multi-line RST inline hyperlinks are preserved.
 _HTML_TAG_RE = re.compile(r"^<(?!https?://|ftp://|mailto:)[a-zA-Z/!]")
 
+# Matches trailing HTML close tags at the end of a prose line
+# (e.g. "Browse blogs.</p>", "See the guide.</li></ul>").
+_TRAILING_HTML_CLOSE_RE = re.compile(r"(</[a-zA-Z]+>)+\s*$")
+
 MIN_PROSE_LINES = 10
 
 
@@ -177,6 +181,8 @@ def generate_combined_markdown(app, exception):
         in_backtick_fence = False
         in_rst_code_block = False
         in_rst_skip_block = False
+        in_html_comment = False  # inside <!-- ... --> block
+        in_html_open_tag = False  # inside a multi-line HTML opening tag
         kept = []
         for line in lines:
             stripped = line.strip()
@@ -187,6 +193,11 @@ def generate_combined_markdown(app, exception):
                 continue
             if in_backtick_fence:
                 kept.append(line)
+                continue
+            # HTML comment block (<!-- ... -->): discard all content until -->
+            if in_html_comment:
+                if "-->" in stripped:
+                    in_html_comment = False
                 continue
             # RST skip block (e.g. .. raw::): discard all indented content
             if in_rst_skip_block:
@@ -207,8 +218,26 @@ def generate_combined_markdown(app, exception):
             if _RST_CODE_BLOCK_RE.match(stripped):
                 in_rst_code_block = True
                 continue
-            if not stripped or is_prose_line(line):
+            # HTML comment open (<!-- ... -->): discard opener and enter state
+            if stripped.startswith("<!--"):
+                if "-->" not in stripped:
+                    in_html_comment = True
+                continue
+            # Multi-line HTML opening tag: skip continuation lines until >
+            if in_html_open_tag:
+                if ">" in stripped:
+                    in_html_open_tag = False
+                continue
+            # Detect HTML opening tags that wrap across lines (no > on this line)
+            if _HTML_TAG_RE.match(stripped) and ">" not in stripped:
+                in_html_open_tag = True
+                continue
+            if not stripped:
                 kept.append(line)
+            elif is_prose_line(line):
+                # Strip trailing HTML close tags (e.g. "See the guide.</p>")
+                cleaned = _TRAILING_HTML_CLOSE_RE.sub("", line).rstrip()
+                kept.append(cleaned if cleaned.strip() else line)
         cleaned = "\n".join(kept)
 
         combined.append(f"\n\n---\n\n# {relative}\n")
