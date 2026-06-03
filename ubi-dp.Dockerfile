@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM registry.access.redhat.com/ubi9/ubi:latest as builder
+FROM registry.access.redhat.com/ubi9/ubi:9.8 as builder
 USER root
 RUN dnf install -y 'dnf-command(config-manager)' && \
     dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/ && \
@@ -19,9 +19,9 @@ RUN dnf install -y 'dnf-command(config-manager)' && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
     dnf install git pkgconfig gcc gcc-c++ make glibc-devel binutils libdrm-devel hwloc-devel wget tar gzip -y && \
     dnf clean all
-RUN wget https://golang.org/dl/go1.23.3.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.23.3.linux-amd64.tar.gz && \
-    rm go1.23.3.linux-amd64.tar.gz
+RUN wget https://go.dev/dl/go1.26.4.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.26.4.linux-amd64.tar.gz && \
+    rm go1.26.4.linux-amd64.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/go"
 RUN mkdir -p /go/src/github.com/ROCm/k8s-device-plugin
@@ -31,7 +31,7 @@ RUN go install \
     -ldflags="-X main.gitDescribe=$(git -C /go/src/github.com/ROCm/k8s-device-plugin/ describe --always --long --dirty)"
 
 
-FROM registry.access.redhat.com/ubi9/ubi-init:9.4
+FROM registry.access.redhat.com/ubi9/ubi-init:9.8
 LABEL \
     name="amd-k8s-device-plugin" \ 
     maintainer="shrey.ajmera@amd.com,yan.sun3@amd.com,praveenkumar.shanmugam@amd.com,nitish.bhat@amd.com,sriram.ravishankar@amd.com,udaybhaskar.biluri@amd.com" \
