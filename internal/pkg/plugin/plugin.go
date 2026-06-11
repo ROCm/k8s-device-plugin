@@ -43,6 +43,7 @@ type AMDGPUPlugin struct {
 	Heartbeat          chan bool
 	signal             chan os.Signal
 	Resource           string
+	Replicas           int
 	devAllocator       allocator.Policy
 	allocatorInitError bool
 }
@@ -71,6 +72,12 @@ func WithHeartbeat(ch chan bool) AMDGPUPluginOption {
 func WithResource(res string) AMDGPUPluginOption {
 	return func(p *AMDGPUPlugin) {
 		p.Resource = res
+	}
+}
+
+func WithReplicas(r int) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.Replicas = r
 	}
 }
 
@@ -230,28 +237,39 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 
 	p.AMDGPUs = amdgpu.GetAMDGPUs()
 
-	glog.Infof("Found %d AMDGPUs", len(p.AMDGPUs))
+	replicas := p.Replicas
+	if replicas < 1 {
+		replicas = 1
+	}
 
-	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
+	glog.Infof("Found %d AMDGPUs, replicas=%d", len(p.AMDGPUs), replicas)
+
 	var isHomogeneous bool
 	isHomogeneous = amdgpu.IsHomogeneous()
 	// Initialize a map to store partitionType based device list
 	resourceTypeDevs := make(map[string][]*pluginapi.Device)
 
+	// Collect physical IDs and build virtual devices
+	physicalIDs := make([]string, 0, len(p.AMDGPUs))
+	for id := range p.AMDGPUs {
+		physicalIDs = append(physicalIDs, id)
+	}
+
+	// Build virtual devices from physical IDs
+	devs := buildVirtualDevices(physicalIDs, replicas)
+
+	// Build a lookup from virtual device ID to its *pluginapi.Device for topology assignment
+	devLookup := make(map[string]*pluginapi.Device, len(devs))
+	for _, dev := range devs {
+		devLookup[dev.ID] = dev
+	}
+
 	if isHomogeneous {
 		// limit scope for hwloc
 		func() {
-			i := 0
 			for id, device := range p.AMDGPUs {
-				dev := &pluginapi.Device{
-					ID:     id,
-					Health: pluginapi.Healthy,
-				}
-				devs[i] = dev
-				i++
-
 				numas := []int64{int64(device["numaNode"].(int))}
-				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
+				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v (replicas=%d)", id, numas, replicas)
 
 				numaNodes := make([]*pluginapi.NUMANode, len(numas))
 				for j, v := range numas {
@@ -260,25 +278,24 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 					}
 				}
 
-				dev.Topology = &pluginapi.TopologyInfo{
-					Nodes: numaNodes,
+				// Assign topology to all virtual devices belonging to this physical GPU
+				for i := 0; i < replicas; i++ {
+					virtualID := fmt.Sprintf("%s%s%d", id, sliceSeparator, i)
+					if vdev, ok := devLookup[virtualID]; ok {
+						vdev.Topology = &pluginapi.TopologyInfo{
+							Nodes: numaNodes,
+						}
+					}
 				}
 			}
 		}()
+		glog.Infof("Sending %d virtual devices to kubelet", len(devs))
 		s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 	} else {
 		func() {
 			for id, device := range p.AMDGPUs {
-				dev := &pluginapi.Device{
-					ID:     id,
-					Health: pluginapi.Healthy,
-				}
-				// Append a device belonging to a certain partition type to its respective list
-				partitionType := device["computePartitionType"].(string) + "_" + device["memoryPartitionType"].(string)
-				resourceTypeDevs[partitionType] = append(resourceTypeDevs[partitionType], dev)
-
 				numas := []int64{int64(device["numaNode"].(int))}
-				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
+				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v (replicas=%d)", id, numas, replicas)
 
 				numaNodes := make([]*pluginapi.NUMANode, len(numas))
 				for j, v := range numas {
@@ -287,13 +304,22 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 					}
 				}
 
-				dev.Topology = &pluginapi.TopologyInfo{
-					Nodes: numaNodes,
+				// Append virtual devices belonging to a certain partition type to its respective list
+				partitionType := device["computePartitionType"].(string) + "_" + device["memoryPartitionType"].(string)
+				for i := 0; i < replicas; i++ {
+					virtualID := fmt.Sprintf("%s%s%d", id, sliceSeparator, i)
+					if vdev, ok := devLookup[virtualID]; ok {
+						vdev.Topology = &pluginapi.TopologyInfo{
+							Nodes: numaNodes,
+						}
+						resourceTypeDevs[partitionType] = append(resourceTypeDevs[partitionType], vdev)
+					}
 				}
 			}
 		}()
 		// Send the appropriate list of devices based on the partitionType
 		if devList, exists := resourceTypeDevs[p.Resource]; exists {
+			glog.Infof("Sending %d virtual devices for resource %s to kubelet", len(devList), p.Resource)
 			s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
 		}
 	}
@@ -310,11 +336,11 @@ loop:
 
 			// update with per device GPU health status
 			if isHomogeneous {
-				exporter.PopulatePerGPUDHealth(devs, health)
+				exporter.PopulatePerGPUDHealth(devs, health, resolvePhysicalID)
 				s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 			} else {
 				if devList, exists := resourceTypeDevs[p.Resource]; exists {
-					exporter.PopulatePerGPUDHealth(devList, health)
+					exporter.PopulatePerGPUDHealth(devList, health, resolvePhysicalID)
 					s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
 				}
 			}
@@ -374,9 +400,11 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 		car.Devices = append(car.Devices, dev)
 
 		for _, id := range req.DevicesIDs {
-			glog.Infof("Allocating device ID: %s", id)
+			// Resolve virtual device ID back to physical GPU ID
+			physicalID := resolvePhysicalID(id)
+			glog.Infof("Allocating device ID: %s (physical: %s)", id, physicalID)
 
-			for k, v := range p.AMDGPUs[id] {
+			for k, v := range p.AMDGPUs[physicalID] {
 				// Map struct previously only had 'card' and 'renderD' and only those are paths to be appended as before
 				if k != "card" && k != "renderD" {
 					continue
@@ -403,6 +431,7 @@ type AMDGPULister struct {
 	ResUpdateChan chan dpm.PluginNameList
 	Heartbeat     chan bool
 	Signal        chan os.Signal
+	Replicas      int
 }
 
 // GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
@@ -437,6 +466,7 @@ func (l *AMDGPULister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 		WithHeartbeat(l.Heartbeat),
 		WithResource(resourceLastName),
 		WithAllocator(allocator.NewBestEffortPolicy()),
+		WithReplicas(l.Replicas),
 	}
 	return NewAMDGPUPlugin(options...)
 }

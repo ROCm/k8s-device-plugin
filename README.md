@@ -89,7 +89,44 @@ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/maste
 * Extends more granular health detection per GPU using the exporter health
   service over grpc socket service mounted on /var/lib/amd-metrics-exporter/
 
-## Notes
+# GPU Time-Slicing (Virtual Devices)
+
+GPU time-slicing allows a single physical AMD GPU to be advertised as multiple virtual devices to Kubernetes, enabling multiple pods to share a GPU via OS-level scheduling. This is a Kubernetes-level overcommit — all virtual slices of the same physical GPU share the same `/dev/kfd` and `/dev/dri/renderD*` devices, so pods compete for VRAM and compute at runtime.
+
+| Flag / Field | Type | Default | Valid Range | Description |
+|--------------|------|---------|-------------|-------------|
+| `--replicas` | int | `1` | `≥ 1` | Number of virtual device slices per physical GPU |
+
+Setting `--replicas=1` (or omitting it) produces behavior identical to the upstream plugin.
+
+## Quick Start
+
+Add the `--replicas` flag to the DaemonSet container args:
+
+```yaml
+containers:
+- image: rocm/k8s-device-plugin
+  name: amdgpu-dp-cntr
+  args:
+    - "./k8s-device-plugin"
+    - "--replicas=4"
+```
+
+That's it. A node with 2 physical GPUs will now report `8` under `amd.com/gpu`.
+
+## Verification
+
+```bash
+kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:"status.capacity.amd\.com/gpu"
+```
+
+Two pods each requesting `amd.com/gpu: 1` can be scheduled on a node with a single physical GPU when `replicas >= 2`.
+
+## Caveats
+
+- **No hardware isolation**: All virtual slices share the same physical GPU. Pods compete for VRAM and compute resources at the OS scheduler level.
+- **No MIG equivalent**: Unlike NVIDIA MIG, there is no hardware-level partitioning. Time-slicing provides Kubernetes scheduling flexibility but no performance guarantees.
+
 
 * This plugin uses [`go modules`][gm] for dependencies management
 * Please consult the `Dockerfile` on how to build and use this plugin independent of a docker image
