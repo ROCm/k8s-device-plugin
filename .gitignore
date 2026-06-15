@@ -40,3 +40,9 @@ helm/**/requirements.lock
 
 # documentation artifacts
 _build/
+
+#CI-CD
+dist/*
+
+# Local development environment overrides
+dev.env
