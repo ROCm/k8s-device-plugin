@@ -1,5 +1,10 @@
 # Makefile for building and packaging ROCm K8s Device Plugin Docker images
 
+# Import development related environment variables from dev.env
+ifneq ("$(wildcard dev.env)","")
+    include dev.env
+endif
+
 # Use bash with pipefail to catch errors in pipe chains
 SHELL := /bin/bash
 .SHELLFLAGS := -o pipefail -c
@@ -18,6 +23,8 @@ DEVICE_PLUGIN_TAG ?= $(IMAGE_VERSION)
 LABELLER_TAG ?= labeller-$(IMAGE_VERSION)
 UBI_DEVICE_PLUGIN_TAG ?= rhubi-$(IMAGE_VERSION)
 UBI_LABELLER_TAG ?= labeller-rhubi-$(IMAGE_VERSION)
+GOLANG_BASE_IMG ?= golang:1.26.4-alpine3.23
+ALPINE_BASE_IMG ?= alpine:3.23.4
 
 # Output directory for tar.gz files
 OUTPUT_DIR ?= ./dist
@@ -41,13 +48,19 @@ save-all: save-device-plugin save-labeller save-ubi-device-plugin save-ubi-label
 # Build Alpine-based device plugin image
 build-device-plugin:
 	@echo "Building Alpine-based device plugin image..."
-	docker build -t $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG) -f Dockerfile .
+	docker build -t $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG) \
+		--build-arg GOLANG_BASE_IMG=$(GOLANG_BASE_IMG) \
+		--build-arg ALPINE_BASE_IMG=$(ALPINE_BASE_IMG) \
+		-f Dockerfile .
 	@echo "Built: $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG)"
 
 # Build Alpine-based node labeller image
 build-labeller:
 	@echo "Building Alpine-based node labeller image..."
-	docker build -t $(IMAGE_REPO):$(LABELLER_TAG) -f labeller.Dockerfile .
+	docker build -t $(IMAGE_REPO):$(LABELLER_TAG) \
+		--build-arg GOLANG_BASE_IMG=$(GOLANG_BASE_IMG) \
+		--build-arg ALPINE_BASE_IMG=$(ALPINE_BASE_IMG) \
+		-f labeller.Dockerfile .
 	@echo "Built: $(IMAGE_REPO):$(LABELLER_TAG)"
 
 # Build UBI-based device plugin image
