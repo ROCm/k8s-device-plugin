@@ -1,0 +1,29 @@
+name: CI - Build Images
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: device-plugin
+            target: build-device-plugin
+          - name: labeller
+            target: build-labeller
+          - name: ubi-device-plugin
+            target: build-ubi-device-plugin
+          - name: ubi-labeller
+            target: build-ubi-labeller
+    name: build (${{ matrix.name }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.name }}
+        run: make ${{ matrix.target }}
