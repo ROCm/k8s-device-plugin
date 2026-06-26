@@ -147,9 +147,17 @@ func GetDevIdsFromTopology(topoRootParam ...string) map[int]string {
 	return renderDevIds
 }
 
+// FatalOnDriverUnavailable controls whether GetAMDGPUs calls glog.Fatalf
+// when the amdgpu driver is not present. Tests set this to false so the
+// test process isn't killed on machines without AMD GPUs.
+var FatalOnDriverUnavailable = true
+
 // GetAMDGPUs return a map of AMD GPU on a node identified by the part of the pci address
 func GetAMDGPUs() map[string]map[string]interface{} {
 	if _, err := os.Stat("/sys/module/amdgpu/drivers/"); err != nil {
+		if FatalOnDriverUnavailable {
+			glog.Fatalf("amdgpu driver unavailable. exiting with exit code 2. error: %s", err)
+		}
 		glog.Warningf("amdgpu driver unavailable: %s", err)
 		return map[string]map[string]interface{}{}
 	}

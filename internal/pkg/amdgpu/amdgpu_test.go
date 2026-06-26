@@ -20,12 +20,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 )
+
+func TestMain(m *testing.M) {
+	FatalOnDriverUnavailable = false
+	os.Exit(m.Run())
+}
 
 func hasAMDGPU(t *testing.T) bool {
 	devices := GetAMDGPUs()
