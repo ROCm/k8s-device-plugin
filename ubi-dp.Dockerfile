@@ -12,16 +12,19 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 FROM registry.access.redhat.com/ubi9/ubi:9.8 as builder
+ARG TARGETARCH
 USER root
-RUN dnf install -y 'dnf-command(config-manager)' && \
-    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/ && \
-    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/ && \
+RUN CENTOS_ARCH=${TARGETARCH}; \
+    if [ "$CENTOS_ARCH" = "amd64" ]; then CENTOS_ARCH="x86_64"; fi; \
+    dnf install -y 'dnf-command(config-manager)' && \
+    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/BaseOS/${CENTOS_ARCH}/os/ && \
+    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/AppStream/${CENTOS_ARCH}/os/ && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
     dnf install git pkgconfig gcc gcc-c++ make glibc-devel binutils libdrm-devel hwloc-devel wget tar gzip -y && \
     dnf clean all
-RUN wget https://go.dev/dl/go1.26.4.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.26.4.linux-amd64.tar.gz && \
-    rm go1.26.4.linux-amd64.tar.gz
+RUN wget https://golang.org/dl/go1.26.4.linux-${TARGETARCH}.tar.gz && \
+    tar -C /usr/local -xzf go1.26.4.linux-${TARGETARCH}.tar.gz && \
+    rm go1.26.4.linux-${TARGETARCH}.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/go"
 RUN mkdir -p /go/src/github.com/ROCm/k8s-device-plugin
@@ -40,12 +43,15 @@ LABEL \
     release="latest" \
     summary="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads." \
     description="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads. With the appropriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU."
-RUN mkdir -p /licenses && \
+ARG TARGETARCH
+RUN CENTOS_ARCH=${TARGETARCH}; \
+    if [ "$CENTOS_ARCH" = "amd64" ]; then CENTOS_ARCH="x86_64"; fi; \
+    mkdir -p /licenses && \
     dnf install -y ca-certificates libdrm && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
     dnf install -y 'dnf-command(config-manager)' && \
-    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/ && \
-    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/ && \
+    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/BaseOS/${CENTOS_ARCH}/os/ && \
+    dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/AppStream/${CENTOS_ARCH}/os/ && \
     dnf install -y hwloc && \
     dnf clean all
 ADD ./LICENSE /licenses/LICENSE
