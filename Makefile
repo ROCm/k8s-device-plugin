@@ -26,18 +26,22 @@ UBI_LABELLER_TAG ?= labeller-rhubi-$(IMAGE_VERSION)
 GOLANG_BASE_IMG ?= golang:1.26.4-alpine3.23
 ALPINE_BASE_IMG ?= alpine:3.23.4
 
+# Multi-architecture support
+PLATFORMS ?= linux/amd64,linux/ppc64le
+
 # Output directory for tar.gz files
 OUTPUT_DIR ?= ./dist
 TAR_DIR ?= $(OUTPUT_DIR)/tarballs
 
 .PHONY: all build-all save-all clean help
 .PHONY: build-device-plugin build-labeller build-ubi-device-plugin build-ubi-labeller
+.PHONY: build-device-plugin-local build-labeller-local build-ubi-device-plugin-local build-ubi-labeller-local
 .PHONY: save-device-plugin save-labeller save-ubi-device-plugin save-ubi-labeller
 
 # Default target
 all: build-all save-all
 
-# Build all images
+# Build all images (multi-arch with push)
 build-all: build-device-plugin build-labeller build-ubi-device-plugin build-ubi-labeller
 	@echo "All images built successfully"
 
@@ -45,34 +49,64 @@ build-all: build-device-plugin build-labeller build-ubi-device-plugin build-ubi-
 save-all: save-device-plugin save-labeller save-ubi-device-plugin save-ubi-labeller
 	@echo "All images saved to $(TAR_DIR)/"
 
-# Build Alpine-based device plugin image
+# Build Alpine-based device plugin image (multi-arch with push)
 build-device-plugin:
-	@echo "Building Alpine-based device plugin image..."
-	docker build -t $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG) \
+	@echo "Building multi-arch Alpine-based device plugin image..."
+	docker buildx build --platform $(PLATFORMS) -t $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG) \
+		--build-arg GOLANG_BASE_IMG=$(GOLANG_BASE_IMG) \
+		--build-arg ALPINE_BASE_IMG=$(ALPINE_BASE_IMG) \
+		-f Dockerfile --push .
+	@echo "Built and pushed: $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG)"
+
+# Build Alpine-based node labeller image (multi-arch with push)
+build-labeller:
+	@echo "Building multi-arch Alpine-based node labeller image..."
+	docker buildx build --platform $(PLATFORMS) -t $(IMAGE_REPO):$(LABELLER_TAG) \
+		--build-arg GOLANG_BASE_IMG=$(GOLANG_BASE_IMG) \
+		--build-arg ALPINE_BASE_IMG=$(ALPINE_BASE_IMG) \
+		-f labeller.Dockerfile --push .
+	@echo "Built and pushed: $(IMAGE_REPO):$(LABELLER_TAG)"
+
+# Build UBI-based device plugin image (multi-arch with push)
+build-ubi-device-plugin:
+	@echo "Building multi-arch UBI-based device plugin image..."
+	docker buildx build --platform $(PLATFORMS) -t $(IMAGE_REPO):$(UBI_DEVICE_PLUGIN_TAG) -f ubi-dp.Dockerfile --push .
+	@echo "Built and pushed: $(IMAGE_REPO):$(UBI_DEVICE_PLUGIN_TAG)"
+
+# Build UBI-based node labeller image (multi-arch with push)
+build-ubi-labeller:
+	@echo "Building multi-arch UBI-based node labeller image..."
+	docker buildx build --platform $(PLATFORMS) -t $(IMAGE_REPO):$(UBI_LABELLER_TAG) -f ubi-labeller.Dockerfile --push .
+	@echo "Built and pushed: $(IMAGE_REPO):$(UBI_LABELLER_TAG)"
+
+# Build Alpine-based device plugin image (local, single-arch, no push)
+build-device-plugin-local:
+	@echo "Building local Alpine-based device plugin image..."
+	DOCKER_BUILDKIT=1 docker build -t $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG) \
 		--build-arg GOLANG_BASE_IMG=$(GOLANG_BASE_IMG) \
 		--build-arg ALPINE_BASE_IMG=$(ALPINE_BASE_IMG) \
 		-f Dockerfile .
 	@echo "Built: $(IMAGE_REPO):$(DEVICE_PLUGIN_TAG)"
 
-# Build Alpine-based node labeller image
-build-labeller:
-	@echo "Building Alpine-based node labeller image..."
-	docker build -t $(IMAGE_REPO):$(LABELLER_TAG) \
+# Build Alpine-based node labeller image (local, single-arch, no push)
+build-labeller-local:
+	@echo "Building local Alpine-based node labeller image..."
+	DOCKER_BUILDKIT=1 docker build -t $(IMAGE_REPO):$(LABELLER_TAG) \
 		--build-arg GOLANG_BASE_IMG=$(GOLANG_BASE_IMG) \
 		--build-arg ALPINE_BASE_IMG=$(ALPINE_BASE_IMG) \
 		-f labeller.Dockerfile .
 	@echo "Built: $(IMAGE_REPO):$(LABELLER_TAG)"
 
-# Build UBI-based device plugin image
-build-ubi-device-plugin:
-	@echo "Building UBI-based device plugin image..."
-	docker build -t $(IMAGE_REPO):$(UBI_DEVICE_PLUGIN_TAG) -f ubi-dp.Dockerfile .
+# Build UBI-based device plugin image (local, single-arch, no push)
+build-ubi-device-plugin-local:
+	@echo "Building local UBI-based device plugin image..."
+	DOCKER_BUILDKIT=1 docker build -t $(IMAGE_REPO):$(UBI_DEVICE_PLUGIN_TAG) -f ubi-dp.Dockerfile .
 	@echo "Built: $(IMAGE_REPO):$(UBI_DEVICE_PLUGIN_TAG)"
 
-# Build UBI-based node labeller image
-build-ubi-labeller:
-	@echo "Building UBI-based node labeller image..."
-	docker build -t $(IMAGE_REPO):$(UBI_LABELLER_TAG) -f ubi-labeller.Dockerfile .
+# Build UBI-based node labeller image (local, single-arch, no push)
+build-ubi-labeller-local:
+	@echo "Building local UBI-based node labeller image..."
+	DOCKER_BUILDKIT=1 docker build -t $(IMAGE_REPO):$(UBI_LABELLER_TAG) -f ubi-labeller.Dockerfile .
 	@echo "Built: $(IMAGE_REPO):$(UBI_LABELLER_TAG)"
 
 # Save Alpine device plugin image to tar.gz
