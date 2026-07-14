@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-ARG GOLANG_BASE_IMG=golang:1.26.4-alpine3.23
+ARG GOLANG_BASE_IMG=golang:1.26.5-alpine3.23
 ARG ALPINE_BASE_IMG=alpine:3.23.5
 FROM ${GOLANG_BASE_IMG}
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev

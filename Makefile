@@ -23,7 +23,7 @@ DEVICE_PLUGIN_TAG ?= $(IMAGE_VERSION)
 LABELLER_TAG ?= labeller-$(IMAGE_VERSION)
 UBI_DEVICE_PLUGIN_TAG ?= rhubi-$(IMAGE_VERSION)
 UBI_LABELLER_TAG ?= labeller-rhubi-$(IMAGE_VERSION)
-GOLANG_BASE_IMG ?= golang:1.26.4-alpine3.23
+GOLANG_BASE_IMG ?= golang:1.26.5-alpine3.23
 ALPINE_BASE_IMG ?= alpine:3.23.5
 
 # Output directory for tar.gz files
