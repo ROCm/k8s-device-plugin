@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 ARG GOLANG_BASE_IMG=golang:1.26.4-alpine3.23
-ARG ALPINE_BASE_IMG=alpine:3.23.4
+ARG ALPINE_BASE_IMG=alpine:3.23.5
 FROM ${GOLANG_BASE_IMG}
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
 RUN apk --no-cache add hwloc-dev --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
