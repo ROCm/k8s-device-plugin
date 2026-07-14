@@ -18,6 +18,7 @@ package allocator
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -219,9 +220,9 @@ func scanAndPopulatePeerWeights(fromPath string, devices []*Device, lookupNodes 
 
 func fetchAllPairWeights(devices []*Device, p2pWeights map[int]map[int]int, folderPath string) error {
 	if len(devices) == 0 {
-		errMsg := fmt.Sprintf("Devices list is empty. Unable to calculate pair wise weights")
+		errMsg := "Devices list is empty. Unable to calculate pair wise weights"
 		glog.Info(errMsg)
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 	if folderPath == "" {
 		folderPath = topoRootPath

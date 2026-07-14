@@ -72,16 +72,16 @@ func getGPUHealth() (hMap map[string]string, err error) {
         return
     }
     for _, gpu := range resp.GPUState {
-        if gpu.Health == strings.ToLower(pluginapi.Healthy) {
-            hMap[gpu.Device] = pluginapi.Healthy
-        } else {
+        if gpu.Health == strings.ToLower(pluginapi.Unhealthy) {
             hMap[gpu.Device] = pluginapi.Unhealthy
+        } else {
+            hMap[gpu.Device] = pluginapi.Healthy
         }
     }
     return
 }
 
-// PopulatePerGPUDHealth populate the per gpu health status if available, 
+// PopulatePerGPUDHealth populate the per gpu health status if available,
 // else return simple health status
 func PopulatePerGPUDHealth(devs []*pluginapi.Device, defaultHealth string) {
     var hasHealthSvc = false
@@ -93,7 +93,7 @@ func PopulatePerGPUDHealth(devs []*pluginapi.Device, defaultHealth string) {
     for i := 0; i < len(devs); i++ {
         if !hasHealthSvc {
             devs[i].Health = defaultHealth
-        }else {
+        } else {
             // only use if we have the device id entry
             if gpuHealth, ok := hMap[devs[i].ID]; ok {
                 devs[i].Health = gpuHealth

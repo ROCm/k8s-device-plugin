@@ -35,6 +35,9 @@ RUN echo "738E,   01, AMD Instinct MI100" >> /go/src/github.com/ROCm/k8s-device-
 RUN echo "73A2,   C0, AMD Radeon Pro W6900X" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
 RUN echo "73AB,   C0, AMD Radeon Pro W6800X" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
 RUN echo "74BC,   00, AMD Instinct MI308X HF VF" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "7551,   C1, AMD Radeon AI PRO R9700S" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "7551,   C8, AMD Radeon AI PRO R9600D" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "744A,   00, AMD Radeon PRO W7900 Dual Slot" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8
 LABEL \

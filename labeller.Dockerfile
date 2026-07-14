@@ -11,7 +11,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-FROM docker.io/golang:1.26.4-alpine3.23
+ARG GOLANG_BASE_IMG=golang:1.26.4-alpine3.23
+ARG ALPINE_BASE_IMG=alpine:3.23.4
+FROM ${GOLANG_BASE_IMG}
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev wget
 RUN mkdir -p /go/src/github.com/ROCm/k8s-device-plugin
 ADD . /go/src/github.com/ROCm/k8s-device-plugin
@@ -24,8 +26,11 @@ RUN echo "738E,   01, AMD Instinct MI100" >> /go/src/github.com/ROCm/k8s-device-
 RUN echo "73A2,   C0, AMD Radeon Pro W6900X" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
 RUN echo "73AB,   C0, AMD Radeon Pro W6800X" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
 RUN echo "74BC,   00, AMD Instinct MI308X HF VF" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "7551,   C1, AMD Radeon AI PRO R9700S" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "7551,   C8, AMD Radeon AI PRO R9600D" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
+RUN echo "744A,   00, AMD Radeon PRO W7900 Dual Slot" >> /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids
 
-FROM alpine:3.23.4
+FROM ${ALPINE_BASE_IMG}
 LABEL \
     org.opencontainers.image.source="https://github.com/ROCm/k8s-device-plugin" \
     org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
