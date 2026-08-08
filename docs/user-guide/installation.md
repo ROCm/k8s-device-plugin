@@ -69,6 +69,10 @@ nodeSelector: {} # Optional: Add custom nodeSelector
 image:
   repository: docker.io/rocm/device-metrics-exporter
   tag: v1.2.0
+  # Note: versions before the fix in ROCm/device-metrics-exporter#586
+  # expose the gRPC service as gpumetricssvc.MetricsService, which the
+  # device plugin cannot use. Use an image built after that merge, or
+  # use the host's systemd-managed exporter instead.
   pullPolicy: Always
 service:
   type: ClusterIP
