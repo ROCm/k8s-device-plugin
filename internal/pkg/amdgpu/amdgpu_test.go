@@ -268,3 +268,369 @@ func TestRenderDevIdsFromTopology(t *testing.T) {
 		t.Errorf("Want: %s", exp)
 	}
 }
+
+func TestResolveDeviceIdentity(t *testing.T) {
+	tests := []struct {
+		name            string
+		devPaths        []string
+		renderDevIDs    map[int]string
+		renderNodeIDs   map[int]int
+		want            deviceIdentity
+		wantErrContains string
+	}{
+		{
+			name:          "complete identity",
+			devPaths:      []string{"/sys/devices/card0", "/sys/devices/renderD128"},
+			renderDevIDs:  map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs: map[int]int{128: 1},
+			want: deviceIdentity{
+				card:    0,
+				renderD: 128,
+				devID:   "0000:01:00:0",
+				nodeID:  1,
+			},
+		},
+		{
+			name:          "KFD node zero is valid",
+			devPaths:      []string{"/sys/devices/card0", "/sys/devices/renderD128"},
+			renderDevIDs:  map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs: map[int]int{128: 0},
+			want: deviceIdentity{
+				card:    0,
+				renderD: 128,
+				devID:   "0000:01:00:0",
+				nodeID:  0,
+			},
+		},
+		{
+			name:            "missing card",
+			devPaths:        []string{"/sys/devices/renderD128"},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "incomplete DRM identity",
+		},
+		{
+			name:            "missing render node",
+			devPaths:        []string{"/sys/devices/card0"},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "incomplete DRM identity",
+		},
+		{
+			name:            "missing KFD device identity",
+			devPaths:        []string{"/sys/devices/card1", "/sys/devices/renderD129"},
+			renderDevIDs:    map[int]string{},
+			renderNodeIDs:   map[int]int{129: 2},
+			wantErrContains: "no KFD device identity",
+		},
+		{
+			name:            "empty KFD device identity",
+			devPaths:        []string{"/sys/devices/card1", "/sys/devices/renderD129"},
+			renderDevIDs:    map[int]string{129: ""},
+			renderNodeIDs:   map[int]int{129: 2},
+			wantErrContains: "no KFD device identity",
+		},
+		{
+			name:            "missing KFD node ID",
+			devPaths:        []string{"/sys/devices/card1", "/sys/devices/renderD129"},
+			renderDevIDs:    map[int]string{129: "0000:02:00:0"},
+			renderNodeIDs:   map[int]int{},
+			wantErrContains: "no KFD node ID",
+		},
+		{
+			name: "short and unrelated entries do not panic",
+			devPaths: []string{
+				"/sys/devices/c",
+				"/sys/devices/controlD64",
+				"/sys/devices/renderD128",
+			},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "incomplete DRM identity",
+		},
+		{
+			name:            "card index that does not fit an int",
+			devPaths:        []string{"/sys/devices/card99999999999999999999", "/sys/devices/renderD128"},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "parse DRM card entry",
+		},
+		{
+			name:            "render index that does not fit an int",
+			devPaths:        []string{"/sys/devices/card0", "/sys/devices/renderD99999999999999999999"},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "parse DRM render entry",
+		},
+		{
+			name: "connector entry is not a card entry",
+			devPaths: []string{
+				"/sys/devices/card0-DP-1",
+				"/sys/devices/renderD128",
+			},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "incomplete DRM identity",
+		},
+		{
+			name: "render entry with a trailing suffix is not a render entry",
+			devPaths: []string{
+				"/sys/devices/card0",
+				"/sys/devices/renderD128x",
+			},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "incomplete DRM identity",
+		},
+		{
+			name: "conflicting cards",
+			devPaths: []string{
+				"/sys/devices/card0",
+				"/sys/devices/card1",
+				"/sys/devices/renderD128",
+			},
+			renderDevIDs:    map[int]string{128: "0000:01:00:0"},
+			renderNodeIDs:   map[int]int{128: 1},
+			wantErrContains: "conflicting DRM card entries",
+		},
+		{
+			name: "conflicting render nodes",
+			devPaths: []string{
+				"/sys/devices/card0",
+				"/sys/devices/renderD128",
+				"/sys/devices/renderD129",
+			},
+			renderDevIDs: map[int]string{
+				128: "0000:01:00:0",
+				129: "0000:02:00:0",
+			},
+			renderNodeIDs: map[int]int{
+				128: 1,
+				129: 2,
+			},
+			wantErrContains: "conflicting DRM render entries",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveDeviceIdentity(
+				tt.devPaths,
+				tt.renderDevIDs,
+				tt.renderNodeIDs,
+			)
+
+			if tt.wantErrContains != "" {
+				if err == nil {
+					t.Fatalf(
+						"resolveDeviceIdentity() error = nil, want %q",
+						tt.wantErrContains,
+					)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Fatalf(
+						"resolveDeviceIdentity() error = %q, want substring %q",
+						err,
+						tt.wantErrContains,
+					)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("resolveDeviceIdentity() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf(
+					"resolveDeviceIdentity() = %#v, want %#v",
+					got,
+					tt.want,
+				)
+			}
+		})
+	}
+}
+
+func TestResolveDeviceIdentityDoesNotReusePreviousDevice(t *testing.T) {
+	renderDevIDs := map[int]string{
+		128: "0000:01:00:0",
+	}
+	renderNodeIDs := map[int]int{
+		128: 1,
+	}
+
+	first, err := resolveDeviceIdentity(
+		[]string{
+			"/sys/devices/card0",
+			"/sys/devices/renderD128",
+		},
+		renderDevIDs,
+		renderNodeIDs,
+	)
+	if err != nil {
+		t.Fatalf("resolve first device: %v", err)
+	}
+	if first.devID != "0000:01:00:0" {
+		t.Fatalf(
+			"first.devID = %q, want %q",
+			first.devID,
+			"0000:01:00:0",
+		)
+	}
+
+	_, err = resolveDeviceIdentity(
+		[]string{
+			"/sys/devices/card1",
+			"/sys/devices/renderD129",
+		},
+		renderDevIDs,
+		renderNodeIDs,
+	)
+	if err == nil {
+		t.Fatal(
+			"second device unexpectedly reused the first device's KFD identity",
+		)
+	}
+}
+
+// TestDevIdsFromTopologyOmitsPCIFunction records that the KFD-derived device
+// identity is built from the bus and device numbers only, so two functions of
+// the same PCI device share one. GetAMDGPUs relies on this when it decides
+// which physical GPU a partition belongs to.
+func TestDevIdsFromTopologyOmitsPCIFunction(t *testing.T) {
+	topoRoot := t.TempDir()
+
+	// the low three bits of location_id hold the PCI function
+	for i, locationId := range []int{0x100, 0x101} {
+		nodeDir := filepath.Join(topoRoot, "topology", "nodes", fmt.Sprint(i+2))
+		if err := os.MkdirAll(nodeDir, 0o755); err != nil {
+			t.Fatalf("Failed to create %s: %s", nodeDir, err)
+		}
+		properties := fmt.Sprintf("location_id %d\ndomain 0\ndrm_render_minor %d\n", locationId, 128+i*8)
+		if err := os.WriteFile(filepath.Join(nodeDir, "properties"), []byte(properties), 0o644); err != nil {
+			t.Fatalf("Failed to write properties: %s", err)
+		}
+	}
+
+	renderDevIds := GetDevIdsFromTopology(topoRoot)
+
+	if len(renderDevIds) != 2 {
+		t.Fatalf("GetDevIdsFromTopology returned %d entries, expect 2", len(renderDevIds))
+	}
+	if renderDevIds[128] != renderDevIds[136] {
+		t.Errorf("function 0 resolved to %q and function 1 to %q, expect the same device identity",
+			renderDevIds[128], renderDevIds[136])
+	}
+}
+
+func TestRecordParentGPU(t *testing.T) {
+	parents := make(map[string]map[string]interface{})
+	ambiguous := make(map[string]struct{})
+
+	first := map[string]interface{}{"card": 0}
+	second := map[string]interface{}{"card": 1}
+	third := map[string]interface{}{"card": 2}
+	other := map[string]interface{}{"card": 3}
+
+	if !recordParentGPU(parents, ambiguous, "0000:01:00:0", first) {
+		t.Fatal("recordParentGPU rejected the first GPU claiming an identity")
+	}
+	if !reflect.DeepEqual(parents["0000:01:00:0"], first) {
+		t.Errorf("0000:01:00:0 resolved to %v, expect the first GPU", parents["0000:01:00:0"])
+	}
+
+	// a second function of the same PCI device shares the identity
+	if recordParentGPU(parents, ambiguous, "0000:01:00:0", second) {
+		t.Error("recordParentGPU accepted a second GPU claiming the same identity")
+	}
+	if _, exists := parents["0000:01:00:0"]; exists {
+		t.Error("an identity claimed twice must not name a parent")
+	}
+
+	// a third claim must not resurrect it
+	if recordParentGPU(parents, ambiguous, "0000:01:00:0", third) {
+		t.Error("recordParentGPU accepted a third GPU claiming the same identity")
+	}
+	if _, exists := parents["0000:01:00:0"]; exists {
+		t.Error("a third claim resurrected an ambiguous identity")
+	}
+
+	// an unrelated identity is unaffected
+	if !recordParentGPU(parents, ambiguous, "0000:02:00:0", other) {
+		t.Error("recordParentGPU rejected an unambiguous identity")
+	}
+	if len(parents) != 1 {
+		t.Errorf("parent inventory holds %d entries, expect only the unambiguous one", len(parents))
+	}
+}
+
+func TestPartitionMetadataFromParent(t *testing.T) {
+	tests := []struct {
+		name            string
+		parent          map[string]interface{}
+		wantCompute     string
+		wantMemory      string
+		wantNuma        int
+		wantErrContains string
+	}{
+		{
+			name:        "complete metadata",
+			parent:      map[string]interface{}{"computePartitionType": "cpx", "memoryPartitionType": "nps4", "numaNode": 1},
+			wantCompute: "cpx", wantMemory: "nps4", wantNuma: 1,
+		},
+		{
+			name:        "NUMA node zero is valid",
+			parent:      map[string]interface{}{"computePartitionType": "spx", "memoryPartitionType": "nps1", "numaNode": 0},
+			wantCompute: "spx", wantMemory: "nps1", wantNuma: 0,
+		},
+		{
+			name:            "compute partition type missing from the map",
+			parent:          map[string]interface{}{"memoryPartitionType": "nps1", "numaNode": 0},
+			wantErrContains: "malformed partition metadata",
+		},
+		{
+			name:            "numa node of the wrong type",
+			parent:          map[string]interface{}{"computePartitionType": "spx", "memoryPartitionType": "nps1", "numaNode": "0"},
+			wantErrContains: "malformed partition metadata",
+		},
+		{
+			name:            "empty compute partition type",
+			parent:          map[string]interface{}{"computePartitionType": "", "memoryPartitionType": "nps1", "numaNode": 0},
+			wantErrContains: "no partition type",
+		},
+		{
+			name:            "empty memory partition type",
+			parent:          map[string]interface{}{"computePartitionType": "spx", "memoryPartitionType": "", "numaNode": 0},
+			wantErrContains: "no partition type",
+		},
+		{
+			name:            "no NUMA affinity",
+			parent:          map[string]interface{}{"computePartitionType": "spx", "memoryPartitionType": "nps1", "numaNode": -1},
+			wantErrContains: "no NUMA node",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compute, memory, numa, err := partitionMetadataFromParent(tt.parent)
+
+			if tt.wantErrContains != "" {
+				if err == nil {
+					t.Fatalf("partitionMetadataFromParent() error = nil, want %q", tt.wantErrContains)
+				}
+				if !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Fatalf("partitionMetadataFromParent() error = %q, want substring %q", err, tt.wantErrContains)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("partitionMetadataFromParent() error = %v", err)
+			}
+			if compute != tt.wantCompute || memory != tt.wantMemory || numa != tt.wantNuma {
+				t.Errorf("partitionMetadataFromParent() = %q, %q, %d, want %q, %q, %d",
+					compute, memory, numa, tt.wantCompute, tt.wantMemory, tt.wantNuma)
+			}
+		})
+	}
+}
