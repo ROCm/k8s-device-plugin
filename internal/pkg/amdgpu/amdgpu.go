@@ -147,6 +147,147 @@ func GetDevIdsFromTopology(topoRootParam ...string) map[int]string {
 	return renderDevIds
 }
 
+type deviceIdentity struct {
+	card    int
+	renderD int
+	devID   string
+	nodeID  int
+}
+
+var (
+	drmCardNameRe   = regexp.MustCompile(`^card([0-9]+)$`)
+	drmRenderNameRe = regexp.MustCompile(`^renderD([0-9]+)$`)
+)
+
+// resolveDeviceIdentity resolves the DRM and KFD identity of a single discovery
+// candidate from its own drm entries. Every call starts from invalid sentinels,
+// so no field can be inherited from a previously enumerated device, and an
+// incomplete, malformed, conflicting or unmapped identity is an error.
+func resolveDeviceIdentity(
+	devPaths []string,
+	renderDevIds map[int]string,
+	renderNodeIds map[int]int,
+) (deviceIdentity, error) {
+	identity := deviceIdentity{
+		card:    -1,
+		renderD: -1,
+		nodeID:  -1,
+	}
+
+	for _, devPath := range devPaths {
+		name := filepath.Base(devPath)
+
+		if match := drmCardNameRe.FindStringSubmatch(name); match != nil {
+			card, err := strconv.Atoi(match[1])
+			if err != nil {
+				return deviceIdentity{}, fmt.Errorf(
+					"parse DRM card entry %q: %w",
+					name,
+					err,
+				)
+			}
+			if identity.card >= 0 && identity.card != card {
+				return deviceIdentity{}, fmt.Errorf(
+					"conflicting DRM card entries: card%d and card%d",
+					identity.card,
+					card,
+				)
+			}
+			identity.card = card
+			continue
+		}
+
+		if match := drmRenderNameRe.FindStringSubmatch(name); match != nil {
+			renderD, err := strconv.Atoi(match[1])
+			if err != nil {
+				return deviceIdentity{}, fmt.Errorf(
+					"parse DRM render entry %q: %w",
+					name,
+					err,
+				)
+			}
+			if identity.renderD >= 0 && identity.renderD != renderD {
+				return deviceIdentity{}, fmt.Errorf(
+					"conflicting DRM render entries: renderD%d and renderD%d",
+					identity.renderD,
+					renderD,
+				)
+			}
+			identity.renderD = renderD
+		}
+	}
+
+	if identity.card < 0 || identity.renderD < 0 {
+		return deviceIdentity{}, fmt.Errorf(
+			"incomplete DRM identity: card=%d renderD=%d",
+			identity.card,
+			identity.renderD,
+		)
+	}
+
+	devID, exists := renderDevIds[identity.renderD]
+	if !exists || devID == "" {
+		return deviceIdentity{}, fmt.Errorf(
+			"renderD%d has no KFD device identity",
+			identity.renderD,
+		)
+	}
+
+	nodeID, exists := renderNodeIds[identity.renderD]
+	if !exists {
+		return deviceIdentity{}, fmt.Errorf(
+			"renderD%d has no KFD node ID",
+			identity.renderD,
+		)
+	}
+
+	identity.devID = devID
+	identity.nodeID = nodeID
+	return identity, nil
+}
+
+// recordParentGPU records a physical GPU as the parent candidate for its KFD
+// device identity. That identity is built from the bus and device numbers only,
+// so two functions of one PCI device share it and neither can name a single
+// parent. Such an identity is removed and kept out, and false is returned.
+func recordParentGPU(
+	parents map[string]map[string]interface{},
+	ambiguous map[string]struct{},
+	devID string,
+	device map[string]interface{},
+) bool {
+	if _, seen := ambiguous[devID]; seen {
+		return false
+	}
+	if _, exists := parents[devID]; exists {
+		delete(parents, devID)
+		ambiguous[devID] = struct{}{}
+		return false
+	}
+
+	parents[devID] = device
+	return true
+}
+
+// partitionMetadataFromParent returns the fields an XCP partition inherits from
+// its physical GPU, or an error naming which of them is unusable.
+func partitionMetadataFromParent(parent map[string]interface{}) (string, string, int, error) {
+	computePartitionType, computeOK := parent["computePartitionType"].(string)
+	memoryPartitionType, memoryOK := parent["memoryPartitionType"].(string)
+	numaNode, numaOK := parent["numaNode"].(int)
+
+	if !computeOK || !memoryOK || !numaOK {
+		return "", "", -1, errors.New("malformed partition metadata")
+	}
+	if computePartitionType == "" || memoryPartitionType == "" {
+		return "", "", -1, errors.New("no partition type")
+	}
+	if numaNode < 0 {
+		return "", "", -1, errors.New("no NUMA node")
+	}
+	return computePartitionType, memoryPartitionType, numaNode, nil
+}
+
 // FatalOnDriverUnavailable controls whether GetAMDGPUs calls glog.Fatalf
 // when the amdgpu driver is not present. Tests set this to false so the
 // test process isn't killed on machines without AMD GPUs.
@@ -165,9 +306,9 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 	//ex: /sys/module/amdgpu/drivers/pci:amdgpu/0000:19:00.0
 	matches, _ := filepath.Glob("/sys/module/amdgpu/drivers/pci:amdgpu/[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]:*")
 
-	devID := ""
 	devices := make(map[string]map[string]interface{})
-	card, renderD, nodeId := 0, 128, 0
+	physicalDevicesByDevID := make(map[string]map[string]interface{})
+	ambiguousDevIDs := make(map[string]struct{})
 	renderDevIds := GetDevIdsFromTopology()
 	renderNodeIds := GetNodeIdsFromTopology()
 
@@ -208,23 +349,41 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
-		for _, devPath := range devPaths {
-			switch name := filepath.Base(devPath); {
-			case name[0:4] == "card":
-				card, _ = strconv.Atoi(name[4:])
-			case name[0:7] == "renderD":
-				renderD, _ = strconv.Atoi(name[7:])
-				if val, exists := renderDevIds[renderD]; exists {
-					devID = val
-				}
-				if id, exists := renderNodeIds[renderD]; exists {
-					nodeId = id
-				}
-			}
-
+		identity, err := resolveDeviceIdentity(
+			devPaths,
+			renderDevIds,
+			renderNodeIds,
+		)
+		if err != nil {
+			glog.Warningf(
+				"Skipping AMD GPU %s: %v",
+				filepath.Base(path),
+				err,
+			)
+			continue
 		}
+
 		// add devID so that we can identify later which gpu should get reported under which resource type
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
+		device := map[string]interface{}{
+			"card":                 identity.card,
+			"renderD":              identity.renderD,
+			"devID":                identity.devID,
+			"computePartitionType": computePartitionType,
+			"memoryPartitionType":  memoryPartitionType,
+			"numaNode":             numaNode,
+			"nodeId":               identity.nodeID,
+		}
+
+		devices[filepath.Base(path)] = device
+
+		// Both GPUs are still reported even when they share an identity, only
+		// the parent inventory has to stay unambiguous for the partitions.
+		if !recordParentGPU(physicalDevicesByDevID, ambiguousDevIDs, identity.devID, device) {
+			glog.Warningf(
+				"KFD device identity %s is claimed by more than one physical GPU, its partitions will not be reported",
+				identity.devID,
+			)
+		}
 	}
 
 	// certain products have additional devices (such as MI300's partitions)
@@ -235,44 +394,53 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
-		computePartitionType, memoryPartitionType := "", ""
-		numaNode := -1
-
-		for _, devPath := range devPaths {
-			switch name := filepath.Base(devPath); {
-			case name[0:4] == "card":
-				card, _ = strconv.Atoi(name[4:])
-			case name[0:7] == "renderD":
-				renderD, _ = strconv.Atoi(name[7:])
-				if val, exists := renderDevIds[renderD]; exists {
-					devID = val
-				}
-				// Set the computePartitionType and memoryPartitionType from the real GPU or from other partitions using the common devID
-				for _, device := range devices {
-					if device["devID"] == devID {
-						if device["computePartitionType"].(string) != "" && device["memoryPartitionType"].(string) != "" {
-							computePartitionType = device["computePartitionType"].(string)
-							memoryPartitionType = device["memoryPartitionType"].(string)
-							numaNode = device["numaNode"].(int)
-							break
-						}
-					}
-				}
-				if id, exists := renderNodeIds[renderD]; exists {
-					nodeId = id
-				}
-			}
+		identity, err := resolveDeviceIdentity(
+			devPaths,
+			renderDevIds,
+			renderNodeIds,
+		)
+		if err != nil {
+			glog.Warningf(
+				"Skipping AMD GPU partition %s: %v",
+				filepath.Base(path),
+				err,
+			)
+			continue
 		}
+
 		// This is needed because some of the visible renderD are actually not valid
 		// Their validity depends on topology information from KFD
+		parent, exists := physicalDevicesByDevID[identity.devID]
+		if !exists {
+			glog.Warningf(
+				"Skipping AMD GPU partition %s: no physical GPU found for KFD device identity %s",
+				filepath.Base(path),
+				identity.devID,
+			)
+			continue
+		}
 
-		if _, exists := renderDevIds[renderD]; !exists {
+		// Set the computePartitionType, memoryPartitionType and numaNode from the physical GPU
+		computePartitionType, memoryPartitionType, numaNode, err := partitionMetadataFromParent(parent)
+		if err != nil {
+			glog.Warningf(
+				"Skipping AMD GPU partition %s: physical GPU %s has %v",
+				filepath.Base(path),
+				identity.devID,
+				err,
+			)
 			continue
 		}
-		if numaNode == -1 {
-			continue
+
+		devices[filepath.Base(path)] = map[string]interface{}{
+			"card":                 identity.card,
+			"renderD":              identity.renderD,
+			"devID":                identity.devID,
+			"computePartitionType": computePartitionType,
+			"memoryPartitionType":  memoryPartitionType,
+			"numaNode":             numaNode,
+			"nodeId":               identity.nodeID,
 		}
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
 	}
 	glog.Infof("Devices map: %v", devices)
 	return devices
