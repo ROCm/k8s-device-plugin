@@ -189,7 +189,7 @@ requests==2.32.3
     # via
     #   pygithub
     #   sphinx
-rocm-docs-core[llms]==1.39.0
+rocm-docs-core[llms]==1.40.0
     # via -r requirements.in
 rpds-py==0.22.3
     # via
