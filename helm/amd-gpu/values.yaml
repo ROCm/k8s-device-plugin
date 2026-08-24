@@ -23,12 +23,14 @@ lbl:
   serviceAccount:
     annotations: {}
   securityContext:
-    privileged: true # Needed for /dev
+    # The labeller reads GPU properties from /sys and opens the DRM device nodes
+    # (/dev/kfd, /dev/dri) via libdrm. Those device nodes are mounted read-only by
+    # the DaemonSet, which is sufficient - no privilege or capabilities are needed.
+    privileged: false
+    allowPrivilegeEscalation: false
     capabilities:
       drop:
         - ALL
-      add:
-        - CAP_SYS_ADMIN
     readOnlyRootFilesystem: false # true if -logtostderr flag set in labeller
   # If you do want to specify resources, uncomment the following lines, 
   # adjust them as necessary, and remove the curly braces after 'resources:'.
