@@ -15,7 +15,7 @@ ARG GOLANG_BASE_IMG=golang:1.26.5-alpine3.23
 ARG ALPINE_BASE_IMG=alpine:3.23.5
 FROM ${GOLANG_BASE_IMG}
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
-RUN apk --no-cache add hwloc-dev --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
+RUN apk --no-cache add hwloc-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
 RUN mkdir -p /go/src/github.com/ROCm/k8s-device-plugin
 ADD . /go/src/github.com/ROCm/k8s-device-plugin
 WORKDIR /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-device-plugin
@@ -29,7 +29,7 @@ LABEL \
     org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
     org.opencontainers.image.licenses="Apache-2.0"
 RUN apk --no-cache add ca-certificates libdrm
-RUN apk --no-cache add hwloc --repository=http://dl-cdn.alpinelinux.org/alpine/edge/community
+RUN apk --no-cache add hwloc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-device-plugin .
 CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]

@@ -6,14 +6,23 @@ on:
     branches:
       - master
 
+# chart-releaser pushes the packaged charts and creates a release; contents is
+# the only elevated scope it needs. Without this block GITHUB_TOKEN defaults to
+# write-all and is handed to a third-party action below via CR_TOKEN.
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # Keep GITHUB_TOKEN out of .git/config, where any later step could
+          # read it. chart-releaser authenticates with CR_TOKEN instead.
+          persist-credentials: false
 
       - name: Configure Git
         run: |
@@ -21,12 +30,12 @@ jobs:
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
       - name: Install Helm
-        uses: azure/setup-helm@v4.2.0
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.16.4
 
       - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.6.0
+        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
         with:
           # The charts directory
           charts_dir: helm
