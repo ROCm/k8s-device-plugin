@@ -19,9 +19,12 @@ RUN dnf install -y 'dnf-command(config-manager)' && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
     dnf install git pkgconfig gcc gcc-c++ make glibc-devel binutils libdrm-devel wget tar gzip -y && \
     dnf clean all
-RUN wget https://go.dev/dl/go1.26.5.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.26.5.linux-amd64.tar.gz && \
-    rm go1.26.5.linux-amd64.tar.gz
+ARG GO_VERSION=1.26.5
+ARG GO_SHA256=5c2c3b16caefa1d968a94c1daca04a7ca301a496d9b086e17ad77bb81393f053
+RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
+    echo "${GO_SHA256}  go${GO_VERSION}.linux-amd64.tar.gz" | sha256sum -c - && \
+    tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
+    rm go${GO_VERSION}.linux-amd64.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/go"
 RUN mkdir -p /go/src/github.com/ROCm/k8s-device-plugin

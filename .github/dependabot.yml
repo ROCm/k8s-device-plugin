@@ -14,3 +14,17 @@ updates:
       - "documentation"
     reviewers:
       - "samjwu"
+    # Wait a week after release so a version that gets yanked or immediately
+    # patched is not pulled in. zizmor's dependabot-cooldown audit runs over the
+    # whole file, so this is required on every entry, not just the new one.
+    cooldown:
+      default-days: 7
+  # Keeps the SHA pins in .github/workflows current; without this they would be
+  # pinned and then quietly rot.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
