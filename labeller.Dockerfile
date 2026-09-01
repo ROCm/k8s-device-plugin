@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-ARG GOLANG_BASE_IMG=golang:1.26.5-alpine3.23
+ARG GOLANG_BASE_IMG=golang:1.26.7-alpine3.23
 ARG ALPINE_BASE_IMG=alpine:3.23.5
 FROM ${GOLANG_BASE_IMG}
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev wget
@@ -27,6 +27,10 @@ LABEL \
     org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
     org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
     org.opencontainers.image.licenses="Apache-2.0"
+# See the note in Dockerfile: the published alpine image lags its own package
+# repository, and 3.23.5 is the newest tag, so CVE-2026-14456 in libssl3 /
+# libcrypto3 has no base bump that clears it.
+RUN apk --no-cache upgrade
 RUN apk --no-cache add ca-certificates libdrm
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-node-labeller .
