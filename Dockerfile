@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-ARG GOLANG_BASE_IMG=golang:1.26.5-alpine3.23
+ARG GOLANG_BASE_IMG=golang:1.26.7-alpine3.23
 ARG ALPINE_BASE_IMG=alpine:3.23.5
 FROM ${GOLANG_BASE_IMG}
 RUN apk --no-cache add git pkgconfig build-base libdrm-dev
@@ -28,6 +28,13 @@ LABEL \
     org.opencontainers.image.authors="Kenny Ho <Kenny.Ho@amd.com>" \
     org.opencontainers.image.vendor="Advanced Micro Devices, Inc." \
     org.opencontainers.image.licenses="Apache-2.0"
+# The published alpine image lags its own package repository, so it ships
+# packages with known fixes already available (CVE-2026-14456 in libssl3 /
+# libcrypto3: image has 3.5.7-r0, v3.23/main has 3.5.8-r0). 3.23.5 is the newest
+# tag, so there is no base bump that clears it. The steps below already install
+# unpinned packages from the live repositories, so this changes nothing about
+# reproducibility.
+RUN apk --no-cache upgrade
 RUN apk --no-cache add ca-certificates libdrm
 RUN apk --no-cache add hwloc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
 WORKDIR /root/
