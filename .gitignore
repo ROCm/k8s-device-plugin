@@ -46,3 +46,8 @@ dist/*
 
 # Local development environment overrides
 dev.env
+
+# Scratch produced by the CVE-fix workflow (.github/workflows/cve-fix.md)
+.cve-scan/
+.trivycache/
+cve-unfixable.json

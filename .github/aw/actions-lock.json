@@ -1,0 +1,14 @@
+{
+  "entries": {
+    "aquasecurity/setup-trivy@v0.3.1": {
+      "repo": "aquasecurity/setup-trivy",
+      "version": "v0.3.1",
+      "sha": "81e514348e19b6112ce2a7e3ecbafe19c1e1f567"
+    },
+    "github/gh-aw-actions/setup@v0.86.2": {
+      "repo": "github/gh-aw-actions/setup",
+      "version": "v0.86.2",
+      "sha": "6aab9e5b5c91c615506061f09bedd81a23babe3c"
+    }
+  }
+}
