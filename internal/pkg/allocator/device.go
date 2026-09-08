@@ -43,8 +43,7 @@ const (
 	xgmiLinkWeight = 10
 	// weight if GPU pair belongs to same numa node
 	sameNumaNodeWeight = 10
-	// weight if GPUs/partitions belong to different GPU.
-	// In case of full GPUs, the weight is 3
+	// weight if GPUs/partitions belong to different GPU
 	differentDevIdWeight = 20
 	// weight if GPU pair belongs to different numa node
 	differentNumaNodeWeight = 20
@@ -52,6 +51,11 @@ const (
 	pcieLinkWeight = 40
 	// weight if a pair is connected via any other link apart from XGMI or PCIE
 	otherLinkWeight = 50
+	// weight if the KFD topology records no link at all between the pair.
+	// A lower weight wins, so this has to stay above every score the constants
+	// above can add up to, otherwise an undiscovered pair would outrank a pair
+	// that is known to be connected.
+	unknownLinkWeight = differentDevIdWeight + otherLinkWeight + differentNumaNodeWeight + 1
 )
 
 type Device struct {
@@ -264,7 +268,12 @@ func addDeviceToSubsetAndUpdateWeight(subset *DeviceSet, devId, devIdx int, p2pW
 			from = devId
 			to = d
 		}
-		currentWeight = currentWeight + p2pWeights[from][to]
+		// A pair the topology says nothing about is treated as the worst case
+		weight, recorded := p2pWeights[from][to]
+		if !recorded {
+			weight = unknownLinkWeight
+		}
+		currentWeight = currentWeight + weight
 	}
 	ids = append(ids, subset.Ids...)
 	ids = append(ids, devId)
