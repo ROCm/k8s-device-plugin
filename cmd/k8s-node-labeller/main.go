@@ -208,7 +208,10 @@ var labelGenerators = map[string]func(map[string]map[string]interface{}) map[str
 	},
 	"product-name": func(gpus map[string]map[string]interface{}) map[string]string {
 		counts := map[string]int{}
-		replacer := strings.NewReplacer(" ", "_", "(", "", ")", "")
+		// "/" is invalid in both a label value and a label key name. The libdrm
+		// fallback returns marketing names such as "AMD Instinct MI250X / MI250",
+		// which otherwise make the whole label update fail validation.
+		replacer := strings.NewReplacer(" ", "_", "(", "", ")", "", "/", "_")
 
 		for _, v := range gpus {
 			prodnamePath := fmt.Sprintf("/sys/class/drm/card%d/device/product_name", v["card"])
