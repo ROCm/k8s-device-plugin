@@ -22,7 +22,7 @@ copyright = "Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved
 # Required settings
 html_theme = "rocm_docs_theme"
 html_theme_options = {
-    "flavor": "instinct",
+    "flavor": "instinct-design",
     "link_main_doc": True,
     "use_download_button": True,
 }
