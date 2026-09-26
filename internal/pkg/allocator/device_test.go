@@ -19,6 +19,7 @@ package allocator
 import (
 	"fmt"
 	"slices"
+	"sort"
 	"strconv"
 	"testing"
 )
@@ -165,5 +166,106 @@ func TestGetSubsetsMethod(t *testing.T) {
 		}
 		t.Logf("Result: %v", tcase.result)
 		t.Logf("Ending Testcase %s", tcase.description)
+	}
+}
+
+// TestUnknownLinkWeightIsWorseThanAnyRecordedPair enumerates every score
+// calculatePairWeight can produce and asserts the unknown-link fallback stays
+// above all of them, so an undiscovered pair can never sort first.
+func TestUnknownLinkWeightIsWorseThanAnyRecordedPair(t *testing.T) {
+	// link types 11 and 2 are XGMI and PCIe, anything else takes otherLinkWeight
+	linkTypes := []int{11, 2, 0, 3, 99}
+	worst := 0
+
+	for _, sameDev := range []bool{true, false} {
+		for _, sameNuma := range []bool{true, false} {
+			for _, linkType := range linkTypes {
+				from := &Device{DevId: "a", NumaNode: 0}
+				to := &Device{DevId: "a", NumaNode: 0}
+				if !sameDev {
+					to.DevId = "b"
+				}
+				if !sameNuma {
+					to.NumaNode = 1
+				}
+				if w := calculatePairWeight(from, to, linkType); w > worst {
+					worst = w
+				}
+			}
+		}
+	}
+
+	if unknownLinkWeight <= worst {
+		t.Errorf("unknownLinkWeight is %d but a recorded pair can score up to %d, so an unrecorded pair would be preferred",
+			unknownLinkWeight, worst)
+	}
+}
+
+func TestAddDeviceToSubsetScoresUnrecordedPairWorst(t *testing.T) {
+	recordedWeight := sameDevIdWeight + xgmiLinkWeight + sameNumaNodeWeight
+	p2pWeights := map[int]map[int]int{2: {3: recordedWeight}}
+	base := NewDeviceSet([]int{2}, []int{0}, 0, 0)
+
+	tests := []struct {
+		name       string
+		devId      int
+		expectAdds int
+	}{
+		{name: "recorded pair", devId: 3, expectAdds: recordedWeight},
+		{name: "pair absent from the row", devId: 99, expectAdds: unknownLinkWeight},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := addDeviceToSubsetAndUpdateWeight(base, tt.devId, 0, p2pWeights)
+			if got.TotalWeight != tt.expectAdds {
+				t.Errorf("TotalWeight = %d, expect %d", got.TotalWeight, tt.expectAdds)
+			}
+		})
+	}
+
+	// The whole row missing must behave like a missing entry in an existing row.
+	noRow := addDeviceToSubsetAndUpdateWeight(NewDeviceSet([]int{7}, []int{0}, 0, 0), 8, 0, p2pWeights)
+	if noRow.TotalWeight != unknownLinkWeight {
+		t.Errorf("TotalWeight = %d for a pair with no row at all, expect %d", noRow.TotalWeight, unknownLinkWeight)
+	}
+}
+
+// TestCandidateSubsetsPreferRecordedLinks covers a topology split into two XGMI
+// islands with nothing recorded between them, which is where an unrecorded pair
+// scoring zero used to win.
+func TestCandidateSubsetsPreferRecordedLinks(t *testing.T) {
+	devs := []*Device{
+		{Id: "gpu0", NodeId: 2, DevId: "0", NumaNode: 0},
+		{Id: "gpu1", NodeId: 3, DevId: "1", NumaNode: 0},
+		{Id: "gpu2", NodeId: 4, DevId: "2", NumaNode: 1},
+		{Id: "gpu3", NodeId: 5, DevId: "3", NumaNode: 1},
+	}
+	linked := differentDevIdWeight + xgmiLinkWeight + sameNumaNodeWeight
+	p2pWeights := map[int]map[int]int{
+		2: {3: linked}, // island A
+		4: {5: linked}, // island B
+	}
+
+	subsets, err := getCandidateDeviceSubsets(groupPartitionsByDevId(devs), devs, devs, nil, 2, p2pWeights)
+	if err != nil {
+		t.Fatalf("getCandidateDeviceSubsets failed: %s", err)
+	}
+	if len(subsets) == 0 {
+		t.Fatal("getCandidateDeviceSubsets returned no candidate")
+	}
+
+	best := subsets[0]
+	for _, subset := range subsets {
+		if subset.TotalWeight < best.TotalWeight {
+			best = subset
+		}
+	}
+
+	sort.Ints(best.Ids)
+	withinIsland := (best.Ids[0] == 2 && best.Ids[1] == 3) || (best.Ids[0] == 4 && best.Ids[1] == 5)
+	if !withinIsland {
+		t.Errorf("best subset is %v with weight %d, expect an XGMI connected pair from one island",
+			best.Ids, best.TotalWeight)
 	}
 }
