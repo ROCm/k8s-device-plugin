@@ -45,6 +45,7 @@ type AMDGPUPlugin struct {
 	Resource           string
 	devAllocator       allocator.Policy
 	allocatorInitError bool
+	occupancyCheck     bool
 }
 
 type AMDGPUPluginOption func(*AMDGPUPlugin)
@@ -71,6 +72,12 @@ func WithHeartbeat(ch chan bool) AMDGPUPluginOption {
 func WithResource(res string) AMDGPUPluginOption {
 	return func(p *AMDGPUPlugin) {
 		p.Resource = res
+	}
+}
+
+func WithOccupancyCheck(enabled bool) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.occupancyCheck = enabled
 	}
 }
 
@@ -209,10 +216,13 @@ func simpleHealthCheck() bool {
 // Manager
 func (p *AMDGPUPlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
 	if p.allocatorInitError {
-		return &pluginapi.DevicePluginOptions{}, nil
+		return &pluginapi.DevicePluginOptions{
+			PreStartRequired: p.occupancyCheck,
+		}, nil
 	}
 	return &pluginapi.DevicePluginOptions{
 		GetPreferredAllocationAvailable: true,
+		PreStartRequired:               p.occupancyCheck,
 	}, nil
 }
 
@@ -220,6 +230,21 @@ func (p *AMDGPUPlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.
 // PreStartContainer allows kubelet to pass reinitialized devices to containers.
 // PreStartContainer allows Device Plugin to run device specific operations on the Devices requested
 func (p *AMDGPUPlugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
+	if p.occupancyCheck {
+		for _, id := range r.DevicesIDs {
+			device, ok := p.AMDGPUs[id]
+			if !ok {
+				return nil, fmt.Errorf("cannot check occupancy for unknown GPU %s", id)
+			}
+			nodeID, ok := device["nodeId"].(int)
+			if !ok || nodeID < 0 {
+				return nil, fmt.Errorf("cannot check occupancy for GPU %s: KFD node ID unavailable", id)
+			}
+			if err := checkGPUOccupancy(id, nodeID); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return &pluginapi.PreStartContainerResponse{}, nil
 }
 
@@ -400,9 +425,10 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 // implementation of this interface to NewManager function. Manager will use it to obtain resource
 // namespace, monitor available resources and instantate a new plugin for them.
 type AMDGPULister struct {
-	ResUpdateChan chan dpm.PluginNameList
-	Heartbeat     chan bool
-	Signal        chan os.Signal
+	ResUpdateChan  chan dpm.PluginNameList
+	Heartbeat      chan bool
+	Signal         chan os.Signal
+	OccupancyCheck bool
 }
 
 // GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
@@ -437,6 +463,7 @@ func (l *AMDGPULister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 		WithHeartbeat(l.Heartbeat),
 		WithResource(resourceLastName),
 		WithAllocator(allocator.NewBestEffortPolicy()),
+		WithOccupancyCheck(l.OccupancyCheck),
 	}
 	return NewAMDGPUPlugin(options...)
 }
