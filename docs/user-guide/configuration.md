@@ -29,6 +29,7 @@ The device plugin supports the following command-line flags:
 |-----|------|-------------|
 | `-pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
 | `-resource_naming_strategy` | `single` | Resource naming strategy used for Kubernetes resource reporting. |
+| `-occupancy_check` | `false` | Enable the opt-in PreStartContainer KFD VRAM check. Container startup fails closed if KFD occupancy cannot be read or VRAM remains allocated. |
 
 ## Configuration File
 
