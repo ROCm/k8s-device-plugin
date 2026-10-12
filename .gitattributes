@@ -1,1 +1,5 @@
 .github/workflows/*.lock.yml linguist-generated=true
+*.go text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf

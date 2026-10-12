@@ -16,6 +16,7 @@ spec:
       labels:
         name: {{ .Chart.Name }}-dp-ds
     spec:
+      hostPID: true
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

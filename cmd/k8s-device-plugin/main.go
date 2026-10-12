@@ -107,12 +107,32 @@ func main() {
 	var pulse int
 	var resourceNamingStrategy string
 	var occupancyCheck bool
+	var occupancyReclaim bool
+	var occupancyReclaimTimeout time.Duration
+	var occupancyReclaimCooldown time.Duration
 	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
 	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single or mixed")
 	flag.BoolVar(&occupancyCheck, "occupancy_check", false,
-		"Fail container startup if KFD reports VRAM still allocated to a requested GPU")
+		"Fail allocation if KFD reports VRAM still allocated to a requested GPU")
+	flag.BoolVar(&occupancyReclaim, "occupancy_reclaim", false,
+		"Kill processes holding KFD VRAM on a requested GPU, then confirm the GPU is free. Implies -occupancy_check. Requires hostPID.")
+	flag.DurationVar(&occupancyReclaimTimeout, "occupancy_reclaim_timeout", plugin.DefaultReclaimTimeout,
+		"How long to wait for KFD VRAM to return to zero after signaling occupying processes.")
+	flag.DurationVar(&occupancyReclaimCooldown, "occupancy_reclaim_cooldown", plugin.DefaultReclaimCooldown,
+		"How long a GPU stays unschedulable after VRAM reclaim times out, so the pod is retried on another GPU.")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
+	if occupancyReclaim {
+		occupancyCheck = true
+		if err := plugin.ValidateReclaimTimeout(occupancyReclaimTimeout); err != nil {
+			glog.Errorf("%v", err)
+			os.Exit(1)
+		}
+		if occupancyReclaimCooldown <= 0 {
+			glog.Errorf("occupancy_reclaim_cooldown must be positive")
+			os.Exit(1)
+		}
+	}
 	strategy, err := ParseStrategy(resourceNamingStrategy)
 	if err != nil {
 		glog.Errorf("%v", err)
@@ -124,9 +144,12 @@ func main() {
 	}
 
 	l := plugin.AMDGPULister{
-		ResUpdateChan:  make(chan dpm.PluginNameList),
-		Heartbeat:      make(chan bool),
-		OccupancyCheck: occupancyCheck,
+		ResUpdateChan:    make(chan dpm.PluginNameList),
+		Heartbeat:        make(chan bool),
+		OccupancyCheck:   occupancyCheck,
+		OccupancyReclaim: occupancyReclaim,
+		ReclaimTimeout:   occupancyReclaimTimeout,
+		ReclaimCooldown:  occupancyReclaimCooldown,
 	}
 	manager := dpm.NewManager(&l)
 

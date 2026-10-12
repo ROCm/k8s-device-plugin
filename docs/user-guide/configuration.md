@@ -29,7 +29,18 @@ The device plugin supports the following command-line flags:
 |-----|------|-------------|
 | `-pulse` | `0` | Time between health check polling in seconds. Set to 0 to disable. |
 | `-resource_naming_strategy` | `single` | Resource naming strategy used for Kubernetes resource reporting. |
-| `-occupancy_check` | `false` | Enable the opt-in PreStartContainer KFD VRAM check. Container startup fails closed if KFD occupancy cannot be read or VRAM remains allocated. |
+| `-occupancy_check` | `false` | Fail allocation when KFD reports VRAM still allocated to a requested GPU, or when that occupancy cannot be read. Does not signal processes. |
+| `-occupancy_reclaim` | `false` | Kill processes holding KFD VRAM on a requested GPU, log each one, and continue only after the GPU is free. Implies `-occupancy_check`. The device plugin pod must set `hostPID: true`. |
+| `-occupancy_reclaim_timeout` | `60s` | How long to wait for VRAM counters to return to zero after signaling. Must be greater than 0. |
+| `-occupancy_reclaim_cooldown` | `60s` | How long a GPU stays unschedulable after reclaim times out, so the next attempt can select a different GPU. |
+
+### KFD VRAM reclaim
+
+`-occupancy_check` reads `/sys/class/kfd/kfd/proc/<pid>/vram_<gpu_id>` during Allocate and PreStartContainer. `<gpu_id>` is the value in `/sys/class/kfd/kfd/topology/nodes/<node>/gpu_id` for the GPU kubelet selected. A missing counter means that process has no allocation on the GPU. If any counter is nonzero, or if the KFD process tree cannot be read, allocation fails closed.
+
+`-occupancy_reclaim` uses that same scan, then logs every occupying process (pid, command name, and VRAM bytes), sends SIGTERM, and sends SIGKILL to anything still present after a short grace. Pid 1 and the device plugin itself are not signaled. The GPU is ready only when every counter reads as zero. KFD directory names are host PIDs, so the device plugin DaemonSet has to run with `hostPID: true` for those signals to reach the right processes.
+
+If the counters are still nonzero when `-occupancy_reclaim_timeout` expires, Allocate returns an error before kubelet checkpoints the GPU and ListAndWatch marks that GPU unhealthy. The following allocation prefers another healthy GPU. The quarantined GPU becomes schedulable again when a later scan shows no VRAM allocated, or when `-occupancy_reclaim_cooldown` expires. On a node with only that GPU, the pod waits out the cooldown instead of signaling the same processes in a tight loop. Kubelet cancels PreStartContainer after 30s, so a container restart can be failed by kubelet while the plugin is still inside the 60s wait. Allocate, which assigns the GPU the first time, waits for the full deadline.
 
 ## Configuration File
 

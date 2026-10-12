@@ -167,11 +167,13 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 
 	devID := ""
 	devices := make(map[string]map[string]interface{})
-	card, renderD, nodeId := 0, 128, 0
+	card, renderD, nodeId, gpuId := 0, 128, 0, 0
 	renderDevIds := GetDevIdsFromTopology()
 	renderNodeIds := GetNodeIdsFromTopology()
+	renderGPUIds := GetGPUIdsFromTopology()
 
 	for _, path := range matches {
+		gpuId = 0
 		computePartitionFile := filepath.Join(path, "current_compute_partition")
 		memoryPartitionFile := filepath.Join(path, "current_memory_partition")
 		numaNodeFile := filepath.Join(path, "numa_node")
@@ -220,11 +222,14 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 				if id, exists := renderNodeIds[renderD]; exists {
 					nodeId = id
 				}
+				if id, exists := renderGPUIds[renderD]; exists {
+					gpuId = id
+				}
 			}
 
 		}
 		// add devID so that we can identify later which gpu should get reported under which resource type
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId, "gpuId": kfdGPUId(gpuId, nodeId)}
 	}
 
 	// certain products have additional devices (such as MI300's partitions)
@@ -232,6 +237,7 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 	platformMatches, _ := filepath.Glob("/sys/devices/platform/amdgpu_xcp_*")
 
 	for _, path := range platformMatches {
+		gpuId = 0
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
@@ -261,6 +267,9 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 				if id, exists := renderNodeIds[renderD]; exists {
 					nodeId = id
 				}
+				if id, exists := renderGPUIds[renderD]; exists {
+					gpuId = id
+				}
 			}
 		}
 		// This is needed because some of the visible renderD are actually not valid
@@ -272,7 +281,7 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		if numaNode == -1 {
 			continue
 		}
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId, "gpuId": kfdGPUId(gpuId, nodeId)}
 	}
 	glog.Infof("Devices map: %v", devices)
 	return devices
@@ -503,6 +512,49 @@ func parseDebugFSFirmwareInfo(path string) (map[string]uint32, map[string]uint32
 var topoDrmRenderMinorRe = regexp.MustCompile(`drm_render_minor\s(\d+)`)
 var topoLocationIdRe = regexp.MustCompile(`location_id\s(\d+)`)
 var topoDomainRe = regexp.MustCompile(`domain\s(\d+)`)
+
+// kfdGPUId is the suffix of vram_<id> under /sys/class/kfd/kfd/proc/<pid>/.
+// The kernel uses the topology gpu_id. Older trees that have no gpu_id file
+// keep the topology node index, which used to be that suffix.
+func kfdGPUId(gpuId, nodeId int) int {
+	if gpuId > 0 {
+		return gpuId
+	}
+	return nodeId
+}
+
+// GetGPUIdsFromTopology maps a DRM render minor to the KFD gpu_id that names
+// per-process VRAM counters (vram_<gpu_id>).
+func GetGPUIdsFromTopology(topoRootParam ...string) map[int]int {
+	topoRoot := "/sys/class/kfd/kfd"
+	if len(topoRootParam) == 1 {
+		topoRoot = topoRootParam[0]
+	}
+
+	renderGPUIds := make(map[int]int)
+	nodeFiles, err := filepath.Glob(topoRoot + "/topology/nodes/*/properties")
+	if err != nil {
+		glog.Errorf("glob error: %s", err)
+		return renderGPUIds
+	}
+
+	for _, nodeFile := range nodeFiles {
+		renderMinor, err := ParseTopologyProperties(nodeFile, topoDrmRenderMinorRe)
+		if err != nil || renderMinor <= 0 {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(filepath.Dir(nodeFile), "gpu_id"))
+		if err != nil {
+			continue
+		}
+		gpuID, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		if err != nil || gpuID <= 0 {
+			continue
+		}
+		renderGPUIds[int(renderMinor)] = gpuID
+	}
+	return renderGPUIds
+}
 
 func GetNodeIdsFromTopology(topoRootParam ...string) map[int]int {
 	topoRoot := "/sys/class/kfd/kfd"
