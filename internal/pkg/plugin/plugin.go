@@ -31,6 +31,7 @@ import (
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/allocator"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/exporter"
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/naming"
 	"github.com/golang/glog"
 	"github.com/kubevirt/device-plugin-manager/pkg/dpm"
 	"golang.org/x/net/context"
@@ -43,6 +44,7 @@ type AMDGPUPlugin struct {
 	Heartbeat          chan bool
 	signal             chan os.Signal
 	Resource           string
+	Strategy           naming.Strategy
 	devAllocator       allocator.Policy
 	allocatorInitError bool
 }
@@ -71,6 +73,12 @@ func WithHeartbeat(ch chan bool) AMDGPUPluginOption {
 func WithResource(res string) AMDGPUPluginOption {
 	return func(p *AMDGPUPlugin) {
 		p.Resource = res
+	}
+}
+
+func WithStrategy(s naming.Strategy) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.Strategy = s
 	}
 }
 
@@ -225,6 +233,24 @@ func (p *AMDGPUPlugin) PreStartContainer(ctx context.Context, r *pluginapi.PreSt
 
 // ListAndWatch returns a stream of List of Devices
 // Whenever a Device state change or a Device disappears, ListAndWatch
+// bucketDevices groups every GPU under the name it is advertised as. A plugin
+// instance serves only its own bucket; under single that is the whole node.
+func bucketDevices(gpus map[string]map[string]interface{}, strategy naming.Strategy) map[string][]*pluginapi.Device {
+	buckets := make(map[string][]*pluginapi.Device)
+	for id, device := range gpus {
+		resource := naming.ResourceName(device, strategy)
+		numa := int64(device["numaNode"].(int))
+		glog.Infof("Watching GPU with bus ID: %s NUMA Node: %d Resource: %s", id, numa, resource)
+
+		buckets[resource] = append(buckets[resource], &pluginapi.Device{
+			ID:       id,
+			Health:   pluginapi.Healthy,
+			Topology: &pluginapi.TopologyInfo{Nodes: []*pluginapi.NUMANode{{ID: numa}}},
+		})
+	}
+	return buckets
+}
+
 // returns the new list
 func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin_ListAndWatchServer) error {
 
@@ -232,71 +258,11 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 
 	glog.Infof("Found %d AMDGPUs", len(p.AMDGPUs))
 
-	devs := make([]*pluginapi.Device, len(p.AMDGPUs))
-	var isHomogeneous bool
-	isHomogeneous = amdgpu.IsHomogeneous()
-	// Initialize a map to store partitionType based device list
-	resourceTypeDevs := make(map[string][]*pluginapi.Device)
+	resourceTypeDevs := bucketDevices(p.AMDGPUs, p.Strategy)
 
-	if isHomogeneous {
-		// limit scope for hwloc
-		func() {
-			i := 0
-			for id, device := range p.AMDGPUs {
-				dev := &pluginapi.Device{
-					ID:     id,
-					Health: pluginapi.Healthy,
-				}
-				devs[i] = dev
-				i++
-
-				numas := []int64{int64(device["numaNode"].(int))}
-				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
-
-				numaNodes := make([]*pluginapi.NUMANode, len(numas))
-				for j, v := range numas {
-					numaNodes[j] = &pluginapi.NUMANode{
-						ID: int64(v),
-					}
-				}
-
-				dev.Topology = &pluginapi.TopologyInfo{
-					Nodes: numaNodes,
-				}
-			}
-		}()
-		s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
-	} else {
-		func() {
-			for id, device := range p.AMDGPUs {
-				dev := &pluginapi.Device{
-					ID:     id,
-					Health: pluginapi.Healthy,
-				}
-				// Append a device belonging to a certain partition type to its respective list
-				partitionType := device["computePartitionType"].(string) + "_" + device["memoryPartitionType"].(string)
-				resourceTypeDevs[partitionType] = append(resourceTypeDevs[partitionType], dev)
-
-				numas := []int64{int64(device["numaNode"].(int))}
-				glog.Infof("Watching GPU with bus ID: %s NUMA Node: %+v", id, numas)
-
-				numaNodes := make([]*pluginapi.NUMANode, len(numas))
-				for j, v := range numas {
-					numaNodes[j] = &pluginapi.NUMANode{
-						ID: int64(v),
-					}
-				}
-
-				dev.Topology = &pluginapi.TopologyInfo{
-					Nodes: numaNodes,
-				}
-			}
-		}()
-		// Send the appropriate list of devices based on the partitionType
-		if devList, exists := resourceTypeDevs[p.Resource]; exists {
-			s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
-		}
-	}
+	devs := resourceTypeDevs[p.Resource]
+	glog.Infof("Reporting %d devices as %s", len(devs), p.Resource)
+	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
 loop:
 	for {
@@ -309,15 +275,8 @@ loop:
 			}
 
 			// update with per device GPU health status
-			if isHomogeneous {
-				exporter.PopulatePerGPUDHealth(devs, health)
-				s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
-			} else {
-				if devList, exists := resourceTypeDevs[p.Resource]; exists {
-					exporter.PopulatePerGPUDHealth(devList, health)
-					s.Send(&pluginapi.ListAndWatchResponse{Devices: devList})
-				}
-			}
+			exporter.PopulatePerGPUDHealth(devs, health)
+			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
 
 		case <-s.Context().Done():
 			glog.Errorf("ListAndWatch stream disconnected: %v, exiting to trigger re-registration", s.Context().Err())
@@ -403,6 +362,7 @@ type AMDGPULister struct {
 	ResUpdateChan chan dpm.PluginNameList
 	Heartbeat     chan bool
 	Signal        chan os.Signal
+	Strategy      naming.Strategy
 }
 
 // GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
@@ -436,6 +396,7 @@ func (l *AMDGPULister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 	options := []AMDGPUPluginOption{
 		WithHeartbeat(l.Heartbeat),
 		WithResource(resourceLastName),
+		WithStrategy(l.Strategy),
 		WithAllocator(allocator.NewBestEffortPolicy()),
 	}
 	return NewAMDGPUPlugin(options...)
