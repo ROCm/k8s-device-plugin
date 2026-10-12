@@ -1,0 +1,107 @@
+# This is a configuration example for the node labeller which includes
+# ClusterRole and ClusterRoleBinding definitions, as well as the
+# DeamonSet configuration that deploys the actual node labeller.
+#
+# This variant adds an init container that waits for the amdgpu driver to
+# register before the labeller starts, the same way
+# k8s-ds-amdgpu-dp-with-init-container.yaml does for the device plugin.
+# /sys/module/amdgpu/drivers/ is created at driver-to-bus registration rather
+# than at module load, so it is briefly absent after insmod and the labeller
+# exits 2. Use this variant where the labeller may start before the driver is
+# ready -- typically on node boot.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cr-node-labeller
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["watch", "get", "list", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: labeller
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cr-node-labeller
+subjects:
+- kind: ServiceAccount
+  name: node-labeller-sa
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-labeller-sa
+  namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: amdgpu-labeller-daemonset
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      name: amdgpu-lr-ds
+  template:
+    metadata:
+      labels:
+        name: amdgpu-lr-ds
+    spec:
+      serviceAccountName: node-labeller-sa
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      priorityClassName: system-node-critical
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      initContainers:
+      - name: amdgpu-lr-init-cntr
+        image: busybox
+        command: ['sh', '-c', 'while [ ! -d /sys/class/kfd ] || [ ! -d /sys/module/amdgpu/drivers/ ]; do echo "amdgpu driver is not loaded"; sleep 2; done;']
+        volumeMounts:
+          - name: sys
+            mountPath: /sys
+            readOnly: true
+      containers:
+      - image: rocm/k8s-device-plugin:labeller-latest
+        name: amdgpu-lr-cntr
+        imagePullPolicy: Always
+        workingDir: /root
+        command: ["./k8s-node-labeller"]
+        args: ["-vram", "-cu-count", "-simd-count", "-device-id", "-family", "-product-name"]
+        env:
+          - name: DS_NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        securityContext:
+          privileged: true #Needed for /dev
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: sys
+            mountPath: /sys
+            readOnly: true
+          - name: dev
+            mountPath: /dev
+        resources: {}
+          # limits:
+          #   memory: 20Mi
+          #   cpu: 100m
+          # requests:
+          #   memory: 30Mi
+          #   cpu: 150m
+      volumes:
+        - name: sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: dev
+          hostPath:
+            path: /dev
+            type: Directory
