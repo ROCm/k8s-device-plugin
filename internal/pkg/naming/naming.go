@@ -22,18 +22,24 @@ package naming
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 type Strategy string
 
-// Resource names these produce: single -> gpu, mixed -> the partition style.
+// Resource names these produce: single -> gpu, mixed -> the partition style,
+// product -> the marketing name from amdgpu.ids.
 const (
-	StrategySingle Strategy = "single"
-	StrategyMixed  Strategy = "mixed"
+	StrategySingle  Strategy = "single"
+	StrategyMixed   Strategy = "mixed"
+	StrategyProduct Strategy = "product"
 )
 
 // DefaultResource is used when a strategy has nothing more specific to say.
 const DefaultResource = "gpu"
+
+// maxResourceNameLen is the Kubernetes limit on the name after "amd.com/".
+const maxResourceNameLen = 63
 
 func ParseStrategy(s string) (Strategy, error) {
 	switch s {
@@ -41,9 +47,41 @@ func ParseStrategy(s string) (Strategy, error) {
 		return StrategySingle, nil
 	case string(StrategyMixed):
 		return StrategyMixed, nil
+	case string(StrategyProduct):
+		return StrategyProduct, nil
 	default:
 		return "", fmt.Errorf("invalid resource naming strategy: %s", s)
 	}
+}
+
+// SanitizeResourceName maps a marketing name onto a valid resource name, or ""
+// if nothing is left. "AMD Instinct MI250X / MI250" has a slash a name may not.
+func SanitizeResourceName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+
+	out := b.String()
+	for strings.Contains(out, "--") {
+		out = strings.ReplaceAll(out, "--", "-")
+	}
+	return truncate(out)
+}
+
+// truncate cuts to the Kubernetes length limit without leaving a leading or
+// trailing separator, which would make the name invalid: a qualified name may
+// contain "-", "." and "_" but must begin and end alphanumeric.
+func truncate(name string) string {
+	if len(name) > maxResourceNameLen {
+		name = name[:maxResourceNameLen]
+	}
+	return strings.Trim(name, "-._")
 }
 
 // partitionStyle returns "" for a GPU that does not support partitioning.
@@ -57,14 +95,29 @@ func partitionStyle(device map[string]interface{}) string {
 }
 
 // ResourceName returns the name, without the "amd.com/" prefix, that one device
-// is advertised under.
-func ResourceName(device map[string]interface{}, strategy Strategy) string {
+// is advertised under. products is consulted only by StrategyProduct.
+func ResourceName(device map[string]interface{}, strategy Strategy, products ProductIndex) string {
 	switch strategy {
 	case StrategyMixed:
 		if style := partitionStyle(device); style != "" {
 			return style
 		}
 		return DefaultResource
+	case StrategyProduct:
+		deviceID, _ := device["deviceID"].(string)
+		revisionID, _ := device["revisionID"].(string)
+		name := products.Name(deviceID, revisionID)
+		if name == "" {
+			name = DefaultResource
+		}
+		// A CPX partition and a whole GPU are not interchangeable. This holds
+		// for a device the table does not list too, which would otherwise pool
+		// the two under a bare "gpu" -- worse than the mixed strategy an
+		// operator migrated away from, and silently so.
+		if style := partitionStyle(device); style != "" {
+			return truncate(name + "-" + SanitizeResourceName(style))
+		}
+		return name
 	default:
 		return DefaultResource
 	}
@@ -83,7 +136,7 @@ func partitionStyles(devices map[string]map[string]interface{}) map[string]struc
 }
 
 // ResourceList returns the sorted, de-duplicated names to advertise.
-func ResourceList(devices map[string]map[string]interface{}, strategy Strategy) ([]string, error) {
+func ResourceList(devices map[string]map[string]interface{}, strategy Strategy, products ProductIndex) ([]string, error) {
 	if len(devices) == 0 {
 		return nil, nil
 	}
@@ -95,7 +148,7 @@ func ResourceList(devices map[string]map[string]interface{}, strategy Strategy) 
 	seen := map[string]struct{}{}
 	resources := []string{}
 	for _, device := range devices {
-		name := ResourceName(device, strategy)
+		name := ResourceName(device, strategy, products)
 		if _, ok := seen[name]; ok {
 			continue
 		}
