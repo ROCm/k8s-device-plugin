@@ -106,8 +106,11 @@ func main() {
 	}
 	var pulse int
 	var resourceNamingStrategy string
+	var occupancyCheck bool
 	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
 	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single or mixed")
+	flag.BoolVar(&occupancyCheck, "occupancy_check", false,
+		"Fail container startup if KFD reports VRAM still allocated to a requested GPU")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
 	strategy, err := ParseStrategy(resourceNamingStrategy)
@@ -121,8 +124,9 @@ func main() {
 	}
 
 	l := plugin.AMDGPULister{
-		ResUpdateChan: make(chan dpm.PluginNameList),
-		Heartbeat:     make(chan bool),
+		ResUpdateChan:  make(chan dpm.PluginNameList),
+		Heartbeat:      make(chan bool),
+		OccupancyCheck: occupancyCheck,
 	}
 	manager := dpm.NewManager(&l)
 
