@@ -8,6 +8,7 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -83,8 +84,12 @@ func newKFDInspector() *kfdInspector {
 
 // prepare logs every process holding VRAM on the GPU. With reclaim disabled it
 // fails closed. With reclaim enabled it signals those processes and waits
-// until the counters drop to zero or the timeout expires.
-func (k *kfdInspector) prepare(deviceID string, gpuNodeID int, reclaim bool, timeout time.Duration) error {
+// until the counters drop to zero, the timeout expires, or ctx is canceled.
+// Cancellation stops further signals and does not quarantine the GPU.
+func (k *kfdInspector) prepare(ctx context.Context, deviceID string, gpuNodeID int, reclaim bool, timeout time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if k.logf == nil {
 		k.logf = glog.Infof
 	}
@@ -99,6 +104,9 @@ func (k *kfdInspector) prepare(deviceID string, gpuNodeID int, reclaim bool, tim
 	k.logOccupants(deviceID, gpuNodeID, occupants, "occupying VRAM")
 	if !reclaim {
 		return fmt.Errorf("GPU %s is occupied by residual KFD VRAM (%d bytes)", deviceID, vramTotal(occupants))
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if timeout <= 0 {
 		timeout = DefaultReclaimTimeout
@@ -129,6 +137,9 @@ func (k *kfdInspector) prepare(deviceID string, gpuNodeID int, reclaim bool, tim
 
 	killed := false
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		occupants, err = k.listOccupants(gpuNodeID)
 		if err != nil {
 			return fmt.Errorf("GPU %s: %w", deviceID, err)
@@ -139,6 +150,9 @@ func (k *kfdInspector) prepare(deviceID string, gpuNodeID int, reclaim bool, tim
 		}
 		now := k.now()
 		if !killed && !now.Before(killAt) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			k.logOccupants(deviceID, gpuNodeID, occupants, "still occupying VRAM after SIGTERM")
 			k.signalOccupants(deviceID, gpuNodeID, occupants, syscall.SIGKILL)
 			killed = true
@@ -161,8 +175,36 @@ func (k *kfdInspector) prepare(deviceID string, gpuNodeID int, reclaim bool, tim
 			step = remaining
 		}
 		if step > 0 {
-			k.sleep(step)
+			if err := k.wait(ctx, step); err != nil {
+				return err
+			}
 		}
+	}
+}
+
+// wait sleeps through the injected clock so tests stay deterministic, and
+// returns as soon as ctx is canceled.
+func (k *kfdInspector) wait(ctx context.Context, d time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if d <= 0 {
+		return nil
+	}
+	if ctx.Done() == nil {
+		k.sleep(d)
+		return nil
+	}
+	done := make(chan struct{})
+	go func() {
+		k.sleep(d)
+		close(done)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return ctx.Err()
 	}
 }
 

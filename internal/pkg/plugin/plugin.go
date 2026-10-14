@@ -56,7 +56,16 @@ type AMDGPUPlugin struct {
 	quarantine         map[string]time.Time
 	quarantineMu       sync.Mutex
 	healthNotify       chan struct{}
+	recheckInterval    time.Duration
+	recheckRunning     bool
 }
+
+// quarantineRecheckInterval is how often a quarantined GPU is checked for
+// cooldown expiry or released VRAM when kubelet sends no further RPCs.
+const quarantineRecheckInterval = time.Second
+
+// quarantineBeforeClear runs while expireQuarantine holds no lock.
+var quarantineBeforeClear func()
 
 type AMDGPUPluginOption func(*AMDGPUPlugin)
 
@@ -67,6 +76,7 @@ func NewAMDGPUPlugin(options ...AMDGPUPluginOption) *AMDGPUPlugin {
 		inspector:       newKFDInspector(),
 		reclaimTimeout:  DefaultReclaimTimeout,
 		reclaimCooldown: DefaultReclaimCooldown,
+		recheckInterval: quarantineRecheckInterval,
 	}
 	for _, option := range options {
 		option(amdGpuPlugin)
@@ -261,7 +271,7 @@ func (p *AMDGPUPlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.
 // PreStartContainer allows kubelet to pass reinitialized devices to containers.
 // PreStartContainer allows Device Plugin to run device specific operations on the Devices requested
 func (p *AMDGPUPlugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
-	if err := p.prepareRequestedGPUs(r.DevicesIDs); err != nil {
+	if err := p.prepareRequestedGPUs(ctx, r.DevicesIDs); err != nil {
 		return nil, err
 	}
 	return &pluginapi.PreStartContainerResponse{}, nil
@@ -411,7 +421,7 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 	for _, req := range r.ContainerRequests {
 		car = pluginapi.ContainerAllocateResponse{}
 
-		if err := p.prepareRequestedGPUs(req.DevicesIDs); err != nil {
+		if err := p.prepareRequestedGPUs(ctx, req.DevicesIDs); err != nil {
 			return nil, err
 		}
 
@@ -462,14 +472,17 @@ func (p *AMDGPUPlugin) publishDevices(s pluginapi.DevicePlugin_ListAndWatchServe
 // prepareRequestedGPUs logs KFD VRAM occupants and, when reclaim is enabled,
 // signals them and waits until the GPU is free. A reclaim timeout quarantines
 // the GPU so the next allocation can choose a different one.
-func (p *AMDGPUPlugin) prepareRequestedGPUs(ids []string) error {
+func (p *AMDGPUPlugin) prepareRequestedGPUs(ctx context.Context, ids []string) error {
 	if !p.occupancyCheck || len(ids) == 0 {
 		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	p.expireQuarantine(time.Now())
 	var first error
 	for _, id := range ids {
-		if err := p.prepareOneGPU(id); err != nil && first == nil {
+		if err := p.prepareOneGPU(ctx, id); err != nil && first == nil {
 			first = err
 		}
 	}
@@ -477,10 +490,14 @@ func (p *AMDGPUPlugin) prepareRequestedGPUs(ids []string) error {
 }
 
 // kfdCounterID is the suffix of the per-process VRAM file for this GPU.
-// Prefer the topology gpu_id. Devices discovered before that file existed
-// fall back to the topology node index.
+// Prefer the topology gpu_id. A gpu_id file that could not be read fails
+// closed. Devices discovered on a tree that has no gpu_id file fall back
+// to the topology node index.
 func kfdCounterID(device map[string]interface{}) (int, bool) {
 	if device == nil {
+		return 0, false
+	}
+	if unavailable, ok := device["gpuIdUnavailable"].(bool); ok && unavailable {
 		return 0, false
 	}
 	if id, ok := device["gpuId"].(int); ok && id > 0 {
@@ -493,7 +510,7 @@ func kfdCounterID(device map[string]interface{}) (int, bool) {
 	return id, true
 }
 
-func (p *AMDGPUPlugin) prepareOneGPU(id string) error {
+func (p *AMDGPUPlugin) prepareOneGPU(ctx context.Context, id string) error {
 	if p.occupancyReclaim && p.isQuarantined(id) {
 		return fmt.Errorf("GPU %s is quarantined after VRAM reclaim failed", id)
 	}
@@ -508,7 +525,7 @@ func (p *AMDGPUPlugin) prepareOneGPU(id string) error {
 	if p.inspector == nil {
 		return fmt.Errorf("cannot inspect KFD process state for GPU %s", id)
 	}
-	err := p.inspector.prepare(id, counterID, p.occupancyReclaim, p.reclaimTimeout)
+	err := p.inspector.prepare(ctx, id, counterID, p.occupancyReclaim, p.reclaimTimeout)
 	if err != nil {
 		var timeout *reclaimTimeoutError
 		if errors.As(err, &timeout) {
@@ -556,9 +573,37 @@ func (p *AMDGPUPlugin) quarantineGPU(id string) {
 		p.quarantine = map[string]time.Time{}
 	}
 	p.quarantine[id] = until
+	startRecheck := !p.recheckRunning && p.recheckInterval > 0
+	if startRecheck {
+		p.recheckRunning = true
+	}
+	interval := p.recheckInterval
 	p.quarantineMu.Unlock()
 	glog.Errorf("GPU %s quarantined until %s because VRAM reclaim did not finish", id, until.Format(time.RFC3339))
 	p.notifyHealth()
+	if startRecheck {
+		go p.quarantineRecheckLoop(interval)
+	}
+}
+
+// quarantineRecheckLoop expires cooldowns and republishes health without
+// waiting for another Allocate or PreStartContainer call. It stops once no
+// GPU remains quarantined.
+func (p *AMDGPUPlugin) quarantineRecheckLoop(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		p.expireQuarantine(time.Now())
+		p.quarantineMu.Lock()
+		empty := len(p.quarantine) == 0
+		if empty {
+			p.recheckRunning = false
+		}
+		p.quarantineMu.Unlock()
+		if empty {
+			return
+		}
+	}
 }
 
 func (p *AMDGPUPlugin) clearQuarantine(id string) bool {
@@ -599,10 +644,18 @@ func (p *AMDGPUPlugin) expireQuarantine(now time.Time) {
 		return
 	}
 
-	var clear []string
+	if quarantineBeforeClear != nil {
+		quarantineBeforeClear()
+	}
+
+	type quarantineCandidate struct {
+		id    string
+		until time.Time
+	}
+	var clear []quarantineCandidate
 	for id, until := range pending {
 		if !now.Before(until) || p.gpuVRAMFree(id) {
-			clear = append(clear, id)
+			clear = append(clear, quarantineCandidate{id: id, until: until})
 		}
 	}
 	if len(clear) == 0 {
@@ -611,12 +664,16 @@ func (p *AMDGPUPlugin) expireQuarantine(now time.Time) {
 
 	p.quarantineMu.Lock()
 	cleared := false
-	for _, id := range clear {
-		if _, ok := p.quarantine[id]; ok {
-			delete(p.quarantine, id)
-			cleared = true
-			glog.Infof("GPU %s left VRAM quarantine", id)
+	for _, item := range clear {
+		current, ok := p.quarantine[item.id]
+		// A reclaim that timed out again while VRAM was being probed
+		// installs a later deadline. Drop only the snapshot we decided on.
+		if !ok || !current.Equal(item.until) {
+			continue
 		}
+		delete(p.quarantine, item.id)
+		cleared = true
+		glog.Infof("GPU %s left VRAM quarantine", item.id)
 	}
 	p.quarantineMu.Unlock()
 	if cleared {

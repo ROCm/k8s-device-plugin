@@ -101,7 +101,7 @@ func TestPrepareAlreadyFree(t *testing.T) {
 	writeOccupant(t, inspector.procRoot, inspector.procFS, 100, 1, 0, "idle")
 	writeOccupant(t, inspector.procRoot, inspector.procFS, 101, 2, 4096, "other-gpu")
 
-	if err := inspector.prepare("gpuA", 1, true, 20*time.Second); err != nil {
+	if err := inspector.prepare(context.Background(), "gpuA", 1, true, 20*time.Second); err != nil {
 		t.Fatalf("free GPU returned error: %v", err)
 	}
 	if len(*signals) != 0 {
@@ -125,7 +125,7 @@ func TestPrepareLogsThenKillsThenConfirmsFree(t *testing.T) {
 		return nil
 	}
 
-	if err := inspector.prepare("gpuA", 1, true, 20*time.Second); err != nil {
+	if err := inspector.prepare(context.Background(), "gpuA", 1, true, 20*time.Second); err != nil {
 		t.Fatalf("reclaim returned error: %v", err)
 	}
 	if len(*signals) != 2 || (*signals)[0].sig != syscall.SIGTERM || (*signals)[1].sig != syscall.SIGKILL {
@@ -147,7 +147,7 @@ func TestPrepareDoesNotSignalProtectedOrCheckOnly(t *testing.T) {
 	writeOccupant(t, inspector.procRoot, inspector.procFS, 42, 1, 200, "device-plugin")
 	writeOccupant(t, inspector.procRoot, inspector.procFS, 100, 1, 300, "leaked-job")
 
-	err := inspector.prepare("gpuA", 1, false, time.Second)
+	err := inspector.prepare(context.Background(), "gpuA", 1, false, time.Second)
 	if err == nil {
 		t.Fatal("check-only mode succeeded while VRAM was allocated")
 	}
@@ -169,7 +169,7 @@ func TestPrepareDoesNotSignalProtectedOrCheckOnly(t *testing.T) {
 		}
 		return nil
 	}
-	err = inspector.prepare("gpuA", 1, true, time.Second)
+	err = inspector.prepare(context.Background(), "gpuA", 1, true, time.Second)
 	var timeout *reclaimTimeoutError
 	if !errors.As(err, &timeout) {
 		t.Fatalf("error = %v, want reclaim timeout while protected processes remain", err)
@@ -189,7 +189,7 @@ func TestPrepareTimeoutWhenKillDoesNotFreeVRAM(t *testing.T) {
 	inspector.grace = 200 * time.Millisecond
 	writeOccupant(t, inspector.procRoot, inspector.procFS, 100, 1, 4096, "stuck")
 
-	err := inspector.prepare("gpuA", 1, true, time.Second)
+	err := inspector.prepare(context.Background(), "gpuA", 1, true, time.Second)
 	var timeout *reclaimTimeoutError
 	if !errors.As(err, &timeout) {
 		t.Fatalf("error = %v, want reclaim timeout", err)
@@ -285,6 +285,7 @@ func TestAllocateReclaimTimeoutQuarantinesGPU(t *testing.T) {
 	writeOccupant(t, inspector.procRoot, inspector.procFS, 100, 1, 4096, "stuck")
 
 	plugin := NewAMDGPUPlugin(WithOccupancyReclaim(true, time.Second, time.Minute))
+	plugin.recheckInterval = 0
 	plugin.inspector = inspector
 	plugin.AMDGPUs = gpuMap("gpuA", "gpuB")
 
@@ -346,6 +347,7 @@ func TestPreferredAllocationSkipsQuarantinedGPU(t *testing.T) {
 		WithAllocator(policy),
 		WithOccupancyReclaim(true, time.Second, time.Minute),
 	)
+	plugin.recheckInterval = 0
 	plugin.inspector = inspector
 	plugin.AMDGPUs = gpuMap("gpuA", "gpuB")
 	plugin.quarantineGPU("gpuA")
@@ -389,11 +391,12 @@ func TestQuarantineBlocksAnotherReclaimUntilVRAMIsFree(t *testing.T) {
 	inspector, _, _, signals := testInspector(t)
 	writeOccupant(t, inspector.procRoot, inspector.procFS, 100, 1, 4096, "stuck")
 	plugin := NewAMDGPUPlugin(WithOccupancyReclaim(true, time.Second, time.Minute))
+	plugin.recheckInterval = 0
 	plugin.inspector = inspector
 	plugin.AMDGPUs = gpuMap("gpuA")
 	plugin.quarantineGPU("gpuA")
 
-	err := plugin.prepareRequestedGPUs([]string{"gpuA"})
+	err := plugin.prepareRequestedGPUs(context.Background(), []string{"gpuA"})
 	if err == nil {
 		t.Fatal("quarantined GPU was prepared again")
 	}
@@ -416,5 +419,105 @@ func TestQuarantineExpiresAfterCooldown(t *testing.T) {
 	plugin.expireQuarantine(time.Now())
 	if plugin.isQuarantined("gpuA") {
 		t.Fatal("quarantine remained after the cooldown")
+	}
+}
+
+func TestExpireQuarantineKeepsExtendedDeadline(t *testing.T) {
+	plugin := NewAMDGPUPlugin(WithOccupancyReclaim(true, time.Second, time.Minute))
+	plugin.recheckInterval = 0
+	original := time.Now().Add(time.Minute)
+	plugin.quarantine["gpuA"] = original
+	extended := original.Add(time.Minute)
+	quarantineBeforeClear = func() {
+		plugin.quarantineMu.Lock()
+		plugin.quarantine["gpuA"] = extended
+		plugin.quarantineMu.Unlock()
+	}
+	t.Cleanup(func() { quarantineBeforeClear = nil })
+
+	plugin.expireQuarantine(original)
+	if !plugin.isQuarantined("gpuA") {
+		t.Fatal("extended quarantine was cleared from a stale snapshot")
+	}
+	plugin.quarantineMu.Lock()
+	got := plugin.quarantine["gpuA"]
+	plugin.quarantineMu.Unlock()
+	if !got.Equal(extended) {
+		t.Fatalf("deadline = %s, want %s", got, extended)
+	}
+}
+
+func TestQuarantineRecheckClearsExpiredCooldown(t *testing.T) {
+	plugin := NewAMDGPUPlugin(WithOccupancyReclaim(true, time.Second, time.Minute))
+	plugin.recheckInterval = 20 * time.Millisecond
+	plugin.quarantineMu.Lock()
+	plugin.quarantine["gpuA"] = time.Now().Add(-time.Millisecond)
+	plugin.recheckRunning = true
+	plugin.quarantineMu.Unlock()
+	go plugin.quarantineRecheckLoop(plugin.recheckInterval)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && plugin.isQuarantined("gpuA") {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if plugin.isQuarantined("gpuA") {
+		t.Fatal("expired quarantine was not cleared without another RPC")
+	}
+}
+
+func TestPrepareStopsWhenContextIsCanceled(t *testing.T) {
+	inspector, _, _, signals := testInspector(t)
+	writeOccupant(t, inspector.procRoot, inspector.procFS, 100, 1, 4096, "stuck")
+	ctx, cancel := context.WithCancel(context.Background())
+	inspector.sleep = func(time.Duration) {
+		cancel()
+	}
+
+	err := inspector.prepare(ctx, "gpuA", 1, true, 20*time.Second)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context canceled", err)
+	}
+	if len(*signals) != 1 || (*signals)[0].sig != syscall.SIGTERM {
+		t.Fatalf("signals = %+v, want only the SIGTERM sent before cancel", *signals)
+	}
+}
+
+func TestCanceledAllocateDoesNotQuarantineOrKill(t *testing.T) {
+	inspector, _, _, signals := testInspector(t)
+	writeOccupant(t, inspector.procRoot, inspector.procFS, 100, 1, 4096, "stuck")
+	plugin := NewAMDGPUPlugin(WithOccupancyReclaim(true, time.Minute, time.Minute))
+	plugin.recheckInterval = 0
+	plugin.inspector = inspector
+	plugin.AMDGPUs = gpuMap("gpuA")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := plugin.Allocate(ctx, &pluginapi.AllocateRequest{
+		ContainerRequests: []*pluginapi.ContainerAllocateRequest{{
+			DevicesIDs: []string{"gpuA"},
+		}},
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context canceled", err)
+	}
+	if len(*signals) != 0 {
+		t.Fatalf("signaled after cancel: %+v", *signals)
+	}
+	if plugin.isQuarantined("gpuA") {
+		t.Fatal("canceled allocation quarantined the GPU")
+	}
+}
+
+func TestKFDCounterIDFailsClosedWhenGPUIdUnreadable(t *testing.T) {
+	id, ok := kfdCounterID(map[string]interface{}{
+		"nodeId":           8,
+		"gpuIdUnavailable": true,
+	})
+	if ok || id != 0 {
+		t.Fatalf("counter = %d, %v; want unavailable", id, ok)
+	}
+	id, ok = kfdCounterID(map[string]interface{}{"nodeId": 8})
+	if !ok || id != 8 {
+		t.Fatalf("legacy counter = %d, %v; want node index 8", id, ok)
 	}
 }

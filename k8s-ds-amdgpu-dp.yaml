@@ -12,7 +12,6 @@ spec:
       labels:
         name: amdgpu-dp-ds
     spec:
-      hostPID: true
       restartPolicy: Always
       nodeSelector:
         kubernetes.io/arch: amd64
