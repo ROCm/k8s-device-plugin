@@ -50,7 +50,7 @@ func main() {
 	var pulse int
 	var resourceNamingStrategy string
 	flag.IntVar(&pulse, "pulse", 0, "time between health check polling in seconds.  Set to 0 to disable.")
-	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single or mixed")
+	flag.StringVar(&resourceNamingStrategy, "resource_naming_strategy", "single", "Resource strategy to be used: single, mixed or product")
 	// this is also needed to enable glog usage in dpm
 	flag.Parse()
 	strategy, err := naming.ParseStrategy(resourceNamingStrategy)
@@ -63,10 +63,20 @@ func main() {
 		glog.Infof("%s", v)
 	}
 
+	var products naming.ProductIndex
+	if strategy == naming.StrategyProduct {
+		if products, err = naming.LoadProductIndex(naming.IDsPath); err != nil {
+			glog.Errorf("%v: the product strategy cannot name resources without it", err)
+			os.Exit(1)
+		}
+		glog.Infof("Loaded %d GPU products from %s", len(products), naming.IDsPath)
+	}
+
 	l := plugin.AMDGPULister{
 		ResUpdateChan: make(chan dpm.PluginNameList),
 		Heartbeat:     make(chan bool),
 		Strategy:      strategy,
+		Products:      products,
 	}
 	manager := dpm.NewManager(&l)
 
@@ -84,7 +94,7 @@ func main() {
 		// /sys/class/kfd only exists if ROCm kernel/driver is installed
 		var path = "/sys/class/kfd"
 		if _, err := os.Stat(path); err == nil {
-			resources, err := naming.ResourceList(amdgpu.GetAMDGPUs(), strategy)
+			resources, err := naming.ResourceList(amdgpu.GetAMDGPUs(), strategy, products)
 			if err != nil {
 				glog.Errorf("Error occured: %v", err)
 				os.Exit(1)

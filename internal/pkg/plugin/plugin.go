@@ -45,6 +45,7 @@ type AMDGPUPlugin struct {
 	signal             chan os.Signal
 	Resource           string
 	Strategy           naming.Strategy
+	Products           naming.ProductIndex
 	devAllocator       allocator.Policy
 	allocatorInitError bool
 }
@@ -79,6 +80,12 @@ func WithResource(res string) AMDGPUPluginOption {
 func WithStrategy(s naming.Strategy) AMDGPUPluginOption {
 	return func(p *AMDGPUPlugin) {
 		p.Strategy = s
+	}
+}
+
+func WithProducts(m naming.ProductIndex) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.Products = m
 	}
 }
 
@@ -235,10 +242,10 @@ func (p *AMDGPUPlugin) PreStartContainer(ctx context.Context, r *pluginapi.PreSt
 // Whenever a Device state change or a Device disappears, ListAndWatch
 // bucketDevices groups every GPU under the name it is advertised as. A plugin
 // instance serves only its own bucket; under single that is the whole node.
-func bucketDevices(gpus map[string]map[string]interface{}, strategy naming.Strategy) map[string][]*pluginapi.Device {
+func bucketDevices(gpus map[string]map[string]interface{}, strategy naming.Strategy, products naming.ProductIndex) map[string][]*pluginapi.Device {
 	buckets := make(map[string][]*pluginapi.Device)
 	for id, device := range gpus {
-		resource := naming.ResourceName(device, strategy)
+		resource := naming.ResourceName(device, strategy, products)
 		numa := int64(device["numaNode"].(int))
 		glog.Infof("Watching GPU with bus ID: %s NUMA Node: %d Resource: %s", id, numa, resource)
 
@@ -258,11 +265,21 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 
 	glog.Infof("Found %d AMDGPUs", len(p.AMDGPUs))
 
-	resourceTypeDevs := bucketDevices(p.AMDGPUs, p.Strategy)
+	resourceTypeDevs := bucketDevices(p.AMDGPUs, p.Strategy, p.Products)
 
-	devs := resourceTypeDevs[p.Resource]
-	glog.Infof("Reporting %d devices as %s", len(devs), p.Resource)
-	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+	// Every response is a full replacement list, so an empty one asserts that
+	// every device went away, where sending nothing leaves kubelet's last
+	// state intact. A bucket can be missing when the enumeration behind the
+	// advertised name and the one behind this list disagree, and nothing
+	// re-buckets afterwards -- so sending the empty list would zero this
+	// resource's capacity for the life of the process.
+	devs, exists := resourceTypeDevs[p.Resource]
+	if !exists {
+		glog.Warningf("No devices bucketed as %s; leaving its reported capacity unchanged", p.Resource)
+	} else {
+		glog.Infof("Reporting %d devices as %s", len(devs), p.Resource)
+		s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+	}
 
 loop:
 	for {
@@ -275,8 +292,10 @@ loop:
 			}
 
 			// update with per device GPU health status
-			exporter.PopulatePerGPUDHealth(devs, health)
-			s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+			if exists {
+				exporter.PopulatePerGPUDHealth(devs, health)
+				s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+			}
 
 		case <-s.Context().Done():
 			glog.Errorf("ListAndWatch stream disconnected: %v, exiting to trigger re-registration", s.Context().Err())
@@ -363,6 +382,7 @@ type AMDGPULister struct {
 	Heartbeat     chan bool
 	Signal        chan os.Signal
 	Strategy      naming.Strategy
+	Products      naming.ProductIndex
 }
 
 // GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
@@ -397,6 +417,7 @@ func (l *AMDGPULister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 		WithHeartbeat(l.Heartbeat),
 		WithResource(resourceLastName),
 		WithStrategy(l.Strategy),
+		WithProducts(l.Products),
 		WithAllocator(allocator.NewBestEffortPolicy()),
 	}
 	return NewAMDGPUPlugin(options...)
