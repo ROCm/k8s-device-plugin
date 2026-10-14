@@ -19,15 +19,37 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	resource "k8s.io/apimachinery/pkg/api/resource"
 )
 
 // EmptyDirVolumeSourceApplyConfiguration represents a declarative configuration of the EmptyDirVolumeSource type for use
 // with apply.
+//
+// Represents an empty directory for a pod.
+// Empty directory volumes support ownership management and SELinux relabeling.
 type EmptyDirVolumeSourceApplyConfiguration struct {
-	Medium    *v1.StorageMedium  `json:"medium,omitempty"`
+	// medium represents what type of storage medium should back this directory.
+	// The default is "" which means to use the node's default medium.
+	// Must be an empty string (default) or Memory.
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
+	Medium *corev1.StorageMedium `json:"medium,omitempty"`
+	// sizeLimit is the total amount of local storage required for this EmptyDir volume.
+	// The size limit is also applicable for memory medium.
+	// The maximum usage on memory medium EmptyDir would be the minimum value between
+	// the SizeLimit specified here and the sum of memory limits of all containers in a pod.
+	// The default is nil which means that the limit is undefined.
+	// More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
 	SizeLimit *resource.Quantity `json:"sizeLimit,omitempty"`
+	// mode specifies the permission bits for the emptyDir directory, in numeric
+	// notation (e.g., 0755, 01777). Must be a value between 0000 and 01777.
+	// If not specified, defaults to 0777.
+	// This might be in conflict with other options that affect the file
+	// mode, like fsGroup. If fsGroup is specified, the fsGroup permissions
+	// will override the mode specified here.
+	// This field has no effect on Windows.
+	// This field is alpha and requires EmptyDirVolumeMode featuregate to be enabled.
+	Mode *int32 `json:"mode,omitempty"`
 }
 
 // EmptyDirVolumeSourceApplyConfiguration constructs a declarative configuration of the EmptyDirVolumeSource type for use with
@@ -39,7 +61,7 @@ func EmptyDirVolumeSource() *EmptyDirVolumeSourceApplyConfiguration {
 // WithMedium sets the Medium field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Medium field is set to the value of the last call.
-func (b *EmptyDirVolumeSourceApplyConfiguration) WithMedium(value v1.StorageMedium) *EmptyDirVolumeSourceApplyConfiguration {
+func (b *EmptyDirVolumeSourceApplyConfiguration) WithMedium(value corev1.StorageMedium) *EmptyDirVolumeSourceApplyConfiguration {
 	b.Medium = &value
 	return b
 }
@@ -49,5 +71,13 @@ func (b *EmptyDirVolumeSourceApplyConfiguration) WithMedium(value v1.StorageMedi
 // If called multiple times, the SizeLimit field is set to the value of the last call.
 func (b *EmptyDirVolumeSourceApplyConfiguration) WithSizeLimit(value resource.Quantity) *EmptyDirVolumeSourceApplyConfiguration {
 	b.SizeLimit = &value
+	return b
+}
+
+// WithMode sets the Mode field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Mode field is set to the value of the last call.
+func (b *EmptyDirVolumeSourceApplyConfiguration) WithMode(value int32) *EmptyDirVolumeSourceApplyConfiguration {
+	b.Mode = &value
 	return b
 }

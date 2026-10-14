@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	intrec "sigs.k8s.io/controller-runtime/pkg/internal/recorder"
+	"sigs.k8s.io/controller-runtime/pkg/recorder"
 )
 
 type cluster struct {
@@ -85,6 +86,10 @@ func (c *cluster) GetCache() cache.Cache {
 
 func (c *cluster) GetEventRecorderFor(name string) record.EventRecorder {
 	return c.recorderProvider.GetEventRecorderFor(name)
+}
+
+func (c *cluster) GetEventRecorder(name string) recorder.EventRecorder {
+	return c.recorderProvider.GetEventRecorder(name)
 }
 
 func (c *cluster) GetRESTMapper() meta.RESTMapper {

@@ -5,17 +5,13 @@ approvers:
   - smarterclayton
   - wojtek-t
   - deads2k
-  - caesarxuchao
   - liggitt
-  - ncdc
 reviewers:
   - thockin
   - smarterclayton
   - wojtek-t
   - deads2k
   - derekwaynecarr
-  - caesarxuchao
-  - mikedanese
   - liggitt
   - janetkuo
   - justinsb
@@ -23,6 +19,8 @@ reviewers:
   - jsafrane
   - dims
   - ingvagabund
-  - ncdc
+  - michaelasp
 emeritus_approvers:
+  - caesarxuchao
   - lavalamp
+  - ncdc

@@ -1,3 +1,19 @@
+/*
+Copyright The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package internal
 
 import (
@@ -8,15 +24,21 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	logf "sigs.k8s.io/controller-runtime/pkg/internal/log"
 
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
+
+var logKind = logf.RuntimeLog.WithName("source").WithName("Kind")
 
 // Kind is used to provide a source of events originating inside the cluster from Watches (e.g. Pod Create).
 type Kind[object client.Object, request comparable] struct {
@@ -52,7 +74,7 @@ func (ks *Kind[object, request]) Start(ctx context.Context, queue workqueue.Type
 	// cache.GetInformer will block until its context is cancelled if the cache was already started and it can not
 	// sync that informer (most commonly due to RBAC issues).
 	ctx, ks.startCancel = context.WithCancel(ctx)
-	ks.startedErr = make(chan error)
+	ks.startedErr = make(chan error, 1) // Buffer chan to not leak goroutines if WaitForSync isn't called
 	go func() {
 		var (
 			i       cache.Informer
@@ -68,12 +90,12 @@ func (ks *Kind[object, request]) Start(ctx context.Context, queue workqueue.Type
 				kindMatchErr := &meta.NoKindMatchError{}
 				switch {
 				case errors.As(lastErr, &kindMatchErr):
-					log.Error(lastErr, "if kind is a CRD, it should be installed before calling Start",
+					logKind.Error(lastErr, "if kind is a CRD, it should be installed before calling Start",
 						"kind", kindMatchErr.GroupKind)
 				case runtime.IsNotRegisteredError(lastErr):
-					log.Error(lastErr, "kind must be registered to the Scheme")
+					logKind.Error(lastErr, "kind must be registered to the Scheme")
 				default:
-					log.Error(lastErr, "failed to get informer from cache")
+					logKind.Error(lastErr, "failed to get informer from cache")
 				}
 				return false, nil // Retry.
 			}
@@ -87,14 +109,23 @@ func (ks *Kind[object, request]) Start(ctx context.Context, queue workqueue.Type
 			return
 		}
 
-		_, err := i.AddEventHandler(NewEventHandler(ctx, queue, ks.Handler, ks.Predicates).HandlerFuncs())
+		handlerRegistration, err := i.AddEventHandlerWithOptions(NewEventHandler(ctx, queue, ks.Handler, ks.Predicates), toolscache.HandlerOptions{
+			Logger: &logKind,
+		})
 		if err != nil {
 			ks.startedErr <- err
 			return
 		}
+		// First, wait for the cache to sync. For real caches this waits for startup.
+		// For fakes with Synced=false, this returns immediately allowing fast failure.
 		if !ks.Cache.WaitForCacheSync(ctx) {
-			// Would be great to return something more informative here
 			ks.startedErr <- errors.New("cache did not sync")
+			close(ks.startedErr)
+			return
+		}
+		// Then wait for this specific handler to receive all initial events.
+		if !toolscache.WaitForCacheSync(ctx.Done(), handlerRegistration.HasSynced) {
+			ks.startedErr <- errors.New("handler did not sync")
 		}
 		close(ks.startedErr)
 	}()
@@ -103,10 +134,18 @@ func (ks *Kind[object, request]) Start(ctx context.Context, queue workqueue.Type
 }
 
 func (ks *Kind[object, request]) String() string {
-	if !isNil(ks.Type) {
+	if isNil(ks.Type) {
+		return "kind source: unknown type"
+	}
+
+	switch v := any(ks.Type).(type) {
+	case *unstructured.Unstructured, *metav1.PartialObjectMetadata:
+		gvk := v.(client.Object).GetObjectKind().GroupVersionKind()
+		gv, kind := gvk.ToAPIVersionAndKind()
+		return fmt.Sprintf("kind source: %T[%s %s]", v, gv, kind)
+	default:
 		return fmt.Sprintf("kind source: %T", ks.Type)
 	}
-	return "kind source: unknown type"
 }
 
 // WaitForSync implements SyncingSource to allow controllers to wait with starting
@@ -120,12 +159,12 @@ func (ks *Kind[object, request]) WaitForSync(ctx context.Context) error {
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return nil
 		}
-		return fmt.Errorf("timed out waiting for cache to be synced for Kind %T", ks.Type)
+		return fmt.Errorf("timed out waiting for cache to be synced for %s", ks.String())
 	}
 }
 
 func isNil(arg any) bool {
-	if v := reflect.ValueOf(arg); !v.IsValid() || ((v.Kind() == reflect.Ptr ||
+	if v := reflect.ValueOf(arg); !v.IsValid() || ((v.Kind() == reflect.Pointer ||
 		v.Kind() == reflect.Interface ||
 		v.Kind() == reflect.Slice ||
 		v.Kind() == reflect.Map ||
