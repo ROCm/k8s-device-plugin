@@ -25,7 +25,7 @@ breathe==4.35.0
     # via rocm-docs-core
 certifi==2024.7.4
     # via requests
-cffi==1.17.0
+cffi==2.0.0
     # via
     #   cryptography
     #   pynacl
@@ -37,7 +37,7 @@ click==8.1.7
     #   sphinx-external-toc
 comm==0.2.2
     # via ipykernel
-cryptography==43.0.1
+cryptography==49.0.0
     # via pyjwt
 debugpy==1.8.12
     # via ipykernel
@@ -62,11 +62,11 @@ fastjsonschema==2.20.0
     #   rocm-docs-core
 gitdb==4.0.11
     # via gitpython
-gitpython==3.1.43
+gitpython==3.1.62
     # via rocm-docs-core
 greenlet==3.1.1
     # via sqlalchemy
-idna==3.7
+idna==3.15
     # via requests
 imagesize==1.4.1
     # via sphinx
@@ -82,7 +82,7 @@ ipython==8.31.0
     #   myst-nb
 jedi==0.19.2
     # via ipython
-jinja2==3.1.4
+jinja2==3.1.6
     # via
     #   myst-parser
     #   sphinx
@@ -96,7 +96,7 @@ jupyter-client==8.6.3
     # via
     #   ipykernel
     #   nbclient
-jupyter-core==5.7.2
+jupyter-core==5.8.1
     # via
     #   ipykernel
     #   jupyter-client
@@ -158,15 +158,15 @@ pydata-sphinx-theme==0.15.4
     #   sphinx-book-theme
 pygithub==2.3.0
     # via rocm-docs-core
-pygments==2.18.0
+pygments==2.20.0
     # via
     #   accessible-pygments
     #   ipython
     #   pydata-sphinx-theme
     #   sphinx
-pyjwt[crypto]==2.9.0
+pyjwt[crypto]==2.15.0
     # via pygithub
-pynacl==1.5.0
+pynacl==1.6.2
     # via pygithub
 python-dateutil==2.9.0.post0
     # via jupyter-client
@@ -185,7 +185,7 @@ referencing==0.36.1
     # via
     #   jsonschema
     #   jsonschema-specifications
-requests==2.32.3
+requests==2.33.0
     # via
     #   pygithub
     #   rocm-docs-core
@@ -202,7 +202,7 @@ smmap==5.0.1
     # via gitdb
 snowballstemmer==2.2.0
     # via sphinx
-soupsieve==2.5
+soupsieve==2.9.1
     # via beautifulsoup4
 sphinx==8.0.2
     # via
@@ -251,7 +251,7 @@ tabulate==0.9.0
     #   sphinx-markdown-builder
 tomli==2.0.1
     # via sphinx
-tornado==6.4.2
+tornado==6.5.9
     # via
     #   ipykernel
     #   jupyter-client
@@ -273,7 +273,7 @@ typing-extensions==4.12.2
     #   pygithub
     #   referencing
     #   sqlalchemy
-urllib3==2.2.2
+urllib3==2.8.0
     # via
     #   pygithub
     #   requests
