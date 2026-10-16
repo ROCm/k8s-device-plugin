@@ -39,4 +39,6 @@ RUN apk --no-cache add ca-certificates libdrm
 RUN apk --no-cache add hwloc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-device-plugin .
+# -resource_naming_strategy=product resolves product names from this table.
+COPY --from=0 /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids /usr/share/libdrm/amdgpu.ids
 CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
