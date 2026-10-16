@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-ARG GO_VERSION=1.26.7
+ARG GO_VERSION=1.27.2
 
 # KUBE-38: the toolchain is integrity-checked on pull, since Docker verifies
 # every layer against its digest in the image manifest.
