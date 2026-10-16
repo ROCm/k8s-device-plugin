@@ -26,6 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+
+	"sigs.k8s.io/controller-runtime/pkg/cache/cacheapi"
 )
 
 // ObjectKey identifies a Kubernetes Object.
@@ -61,6 +63,9 @@ type Reader interface {
 
 // Writer knows how to create, delete, and update Kubernetes objects.
 type Writer interface {
+	// Apply applies the given apply configuration to the Kubernetes cluster.
+	Apply(ctx context.Context, obj runtime.ApplyConfiguration, opts ...ApplyOption) error
+
 	// Create saves the object obj in the Kubernetes cluster. obj must be a
 	// struct pointer so that obj can be updated with the content returned by the Server.
 	Create(ctx context.Context, obj Object, opts ...CreateOption) error
@@ -94,16 +99,16 @@ type SubResourceClientConstructor interface {
 	// - ServiceAccount token creation:
 	//     sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Namespace: "foo", Name: "bar"}}
 	//     token := &authenticationv1.TokenRequest{}
-	//     c.SubResourceClient("token").Create(ctx, sa, token)
+	//     c.SubResource("token").Create(ctx, sa, token)
 	//
 	// - Pod eviction creation:
 	//     pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "foo", Name: "bar"}}
-	//     c.SubResourceClient("eviction").Create(ctx, pod, &policyv1.Eviction{})
+	//     c.SubResource("eviction").Create(ctx, pod, &policyv1.Eviction{})
 	//
 	// - Pod binding creation:
 	//     pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: "foo", Name: "bar"}}
 	//     binding := &corev1.Binding{Target: corev1.ObjectReference{Name: "my-node"}}
-	//     c.SubResourceClient("binding").Create(ctx, pod, binding)
+	//     c.SubResource("binding").Create(ctx, pod, binding)
 	//
 	// - CertificateSigningRequest approval:
 	//     csr := &certificatesv1.CertificateSigningRequest{
@@ -115,17 +120,17 @@ type SubResourceClientConstructor interface {
 	//         }},
 	//       },
 	//     }
-	//     c.SubResourceClient("approval").Update(ctx, csr)
+	//     c.SubResource("approval").Update(ctx, csr)
 	//
 	// - Scale retrieval:
 	//     dep := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "foo", Name: "bar"}}
 	//     scale := &autoscalingv1.Scale{}
-	//     c.SubResourceClient("scale").Get(ctx, dep, scale)
+	//     c.SubResource("scale").Get(ctx, dep, scale)
 	//
 	// - Scale update:
 	//     dep := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "foo", Name: "bar"}}
 	//     scale := &autoscalingv1.Scale{Spec: autoscalingv1.ScaleSpec{Replicas: 2}}
-	//     c.SubResourceClient("scale").Update(ctx, dep, client.WithSubResourceBody(scale))
+	//     c.SubResource("scale").Update(ctx, dep, client.WithSubResourceBody(scale))
 	SubResource(subResource string) SubResourceClient
 }
 
@@ -152,6 +157,9 @@ type SubResourceWriter interface {
 	// pointer so that obj can be updated with the content returned by the
 	// Server.
 	Patch(ctx context.Context, obj Object, patch Patch, opts ...SubResourcePatchOption) error
+
+	// Apply applies the given apply configurations subresource.
+	Apply(ctx context.Context, obj runtime.ApplyConfiguration, opts ...SubResourceApplyOption) error
 }
 
 // SubResourceClient knows how to perform CRU operations on Kubernetes objects.
@@ -188,20 +196,11 @@ type WithWatch interface {
 // IndexerFunc knows how to take an object and turn it into a series
 // of non-namespaced keys. Namespaced objects are automatically given
 // namespaced and non-spaced variants, so keys do not need to include namespace.
-type IndexerFunc func(Object) []string
+type IndexerFunc = cacheapi.IndexerFunc
 
 // FieldIndexer knows how to index over a particular "field" such that it
 // can later be used by a field selector.
-type FieldIndexer interface {
-	// IndexFields adds an index with the given field name on the given object type
-	// by using the given function to extract the value for that field.  If you want
-	// compatibility with the Kubernetes API server, only return one key, and only use
-	// fields that the API server supports.  Otherwise, you can return multiple keys,
-	// and "equality" in the field selector means that at least one key matches the value.
-	// The FieldIndexer will automatically take care of indexing over namespace
-	// and supporting efficient all-namespace queries.
-	IndexField(ctx context.Context, obj Object, field string, extractValue IndexerFunc) error
-}
+type FieldIndexer = cacheapi.FieldIndexer
 
 // IgnoreNotFound returns nil on NotFound errors.
 // All other values that are not NotFound errors or nil are returned unmodified.

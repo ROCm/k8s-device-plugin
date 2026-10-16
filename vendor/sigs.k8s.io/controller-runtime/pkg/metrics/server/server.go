@@ -105,6 +105,10 @@ type Options struct {
 	// This also allows providing a certificate via GetCertificate.
 	TLSOpts []func(*tls.Config)
 
+	// HandlerOpts is used to allow configuring the promhttp handler used to serve metrics.
+	// These options are applied after the default handler options are set and can override them.
+	HandlerOpts []func(*promhttp.HandlerOpts)
+
 	// ListenConfig contains options for listening to an address on the metric server.
 	ListenConfig net.ListenConfig
 }
@@ -218,9 +222,7 @@ func (s *defaultServer) Start(ctx context.Context) error {
 
 	mux := http.NewServeMux()
 
-	handler := promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{
-		ErrorHandling: promhttp.HTTPErrorOnError,
-	})
+	handler := promhttp.HandlerFor(metrics.Registry, s.handlerOpts())
 	if s.metricsFilter != nil {
 		log := log.WithValues("path", defaultMetricsEndpoint)
 		var err error
@@ -246,7 +248,7 @@ func (s *defaultServer) Start(ctx context.Context) error {
 
 	log.Info("Serving metrics server", "bindAddress", s.options.BindAddress, "secure", s.options.SecureServing)
 
-	srv := httpserver.New(mux)
+	srv := httpserver.New(ctx, mux)
 
 	idleConnsClosed := make(chan struct{})
 	go func() {
@@ -270,12 +272,22 @@ func (s *defaultServer) Start(ctx context.Context) error {
 	return nil
 }
 
+func (s *defaultServer) handlerOpts() promhttp.HandlerOpts {
+	handlerOpts := promhttp.HandlerOpts{
+		ErrorHandling: promhttp.HTTPErrorOnError,
+	}
+	for _, op := range s.options.HandlerOpts {
+		op(&handlerOpts)
+	}
+	return handlerOpts
+}
+
 func (s *defaultServer) createListener(ctx context.Context, log logr.Logger) (net.Listener, error) {
 	if !s.options.SecureServing {
 		return s.options.ListenConfig.Listen(ctx, "tcp", s.options.BindAddress)
 	}
 
-	cfg := &tls.Config{ //nolint:gosec
+	cfg := &tls.Config{
 		NextProtos: []string{"h2"},
 	}
 	// fallback TLS config ready, will now mutate if passer wants full control over it
