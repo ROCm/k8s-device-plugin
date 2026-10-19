@@ -10,17 +10,25 @@
 # This file defines the complete scanner policy;
 # Keep repository-specific suppressions and tuning here.
 
-# Suppressing one check on one file would be the right tool here, and this
-# repository cannot reach it. Trivy spells that as an ignore file, but it
-# resolves `ignorefile` against the process working directory, and the shared
-# scan workflow runs trivy from the directory above the checkout -- so no
-# committed path reaches it, and a wrong one is fatal rather than ignored.
-# Inline `#trivy:ignore:` comments are the per-check alternative, and only the
-# Dockerfile scanner honours them (`WithSupportsInlineIgnore`); the Kubernetes
-# scanner does not. The Dockerfiles therefore carry inline ignores, and the
-# manifests below are skipped wholesale, which is coarser than intended: a new
-# finding in one of these files will not be reported. Narrow this to per-check
-# ignores once the shared workflow can pass `--ignorefile`.
+# Suppressions live in three places, because no single one of them can say
+# "this check, on this file":
+#
+#   .trivyignore          per check, repository-wide. The shared workflow
+#                         discovers it and passes --ignorefile. Setting
+#                         `ignorefile:` here instead does NOT work: trivy
+#                         resolves that against its own working directory,
+#                         which is the directory above the scanned checkout.
+#   inline comments       per check, per line, Dockerfiles only. The
+#                         Dockerfile scanner sets `WithSupportsInlineIgnore`;
+#                         the Kubernetes scanner does not.
+#   skip-files, below     per file, every check.
+#
+# So a finding that is intrinsic everywhere goes in .trivyignore, and one that
+# is intrinsic to a particular manifest has to take skip-files and lose every
+# other check on that file. Only the five DaemonSets need that, and it is
+# still coarser than intended: a new finding in one of them will not be
+# reported. Narrow both once the shared workflow can read a
+# `.trivyignore.yaml`, which scopes a check to a path -- ROCm/rocm-security-gh#37.
 scan:
   # Environment and generated-output exclusions support local scans; these
   # paths are absent from clean CI checkouts. `vendor` is the exception: it is
@@ -37,29 +45,23 @@ scan:
     - __pycache__
     - vendor
 
+  # Only the DaemonSets. The example manifests are scanned normally -- the
+  # three checks that fire on them are intrinsic to every GPU workload, so
+  # they live in .trivyignore, which leaves every other check live on those
+  # files. KSV-0118 in particular stays live there, which is what keeps the
+  # explicit security contexts in example/pod/*.yaml from regressing.
   skip-files:
     # A device plugin is privileged by construction: it enumerates GPUs
     # through /sys and /dev/kfd, and registers over the kubelet's
-    # device-plugin socket. KSV-0005 (SYS_ADMIN), KSV-0017 (privileged),
-    # KSV-0121 (hostPath) and KSV-0118 have no fix that leaves a working
-    # plugin, and KSV-0014 (readOnlyRootFilesystem) would block the socket.
+    # device-plugin socket. KSV-0005 (SYS_ADMIN), KSV-0017 (privileged) and
+    # KSV-0121 (hostPath) have no fix that leaves a working plugin, and
+    # KSV-0118 wants a pod-level context that would add nothing a reader
+    # could act on -- these set what they need at container level.
+    #
+    # Those four are deliberately NOT in .trivyignore: each is worth catching
+    # if it ever appears in an example manifest or a new DaemonSet.
     - k8s-ds-amdgpu-dp.yaml
     - k8s-ds-amdgpu-dp-health.yaml
     - k8s-ds-amdgpu-dp-with-init-container.yaml
     - k8s-ds-amdgpu-labeller.yaml
     - k8s-ds-amdgpu-labeller-with-init-container.yaml
-
-    # Example workloads. Two checks fire here that should not be "fixed":
-    # KSV-0008 (hostIPC) is part of the configuration that
-    # docs/user-guide/configuration.md documents as tested for non-privileged
-    # GPU access, and KSV-0014 (readOnlyRootFilesystem) would need a writable
-    # emptyDir for every JIT and kernel cache a ROCm image writes -- a set
-    # that differs per framework and per image tag, and that no CI here can
-    # validate on GPU hardware. The security contexts these manifests do
-    # carry are set explicitly rather than inherited.
-    - example/pod/jax-multi-gpu.yaml
-    - example/pod/jax-non-privileged.yaml
-    - example/pod/pytorch.yaml
-    - example/pod/pytorch-non-privileged.yaml
-    - example/pod/tensorflow-gpu.yaml
-    - example/vllm-serve/deployment.yaml
