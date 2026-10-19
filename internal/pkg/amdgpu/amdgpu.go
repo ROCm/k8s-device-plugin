@@ -179,6 +179,10 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		computePartitionType, memoryPartitionType := "", ""
 		numaNode := -1
 
+		// The pair amdgpu.ids is keyed on.
+		deviceID := pciHexAttr(path, "device")
+		revisionID := pciHexAttr(path, "revision")
+
 		// Read the compute partition
 		if data, err := ioutil.ReadFile(computePartitionFile); err == nil {
 			computePartitionType = strings.ToLower(strings.TrimSpace(string(data)))
@@ -224,7 +228,7 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 
 		}
 		// add devID so that we can identify later which gpu should get reported under which resource type
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId, "deviceID": deviceID, "revisionID": revisionID}
 	}
 
 	// certain products have additional devices (such as MI300's partitions)
@@ -236,6 +240,7 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
 		computePartitionType, memoryPartitionType := "", ""
+		deviceID, revisionID := "", ""
 		numaNode := -1
 
 		for _, devPath := range devPaths {
@@ -254,6 +259,9 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 							computePartitionType = device["computePartitionType"].(string)
 							memoryPartitionType = device["memoryPartitionType"].(string)
 							numaNode = device["numaNode"].(int)
+							// A partition is a slice of its parent, so it is that product.
+							deviceID = device["deviceID"].(string)
+							revisionID = device["revisionID"].(string)
 							break
 						}
 					}
@@ -272,7 +280,7 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		if numaNode == -1 {
 			continue
 		}
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId}
+		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId, "deviceID": deviceID, "revisionID": revisionID}
 	}
 	glog.Infof("Devices map: %v", devices)
 	return devices
@@ -546,6 +554,19 @@ func GetNodeIdsFromTopology(topoRootParam ...string) map[int]int {
 	}
 
 	return renderNodeIds
+}
+
+// pciHexAttr reads a hex sysfs attribute such as "device", whose contents are
+// "0x74a1", and returns it as amdgpu.ids spells it: "74A1".
+func pciHexAttr(path, attr string) string {
+	file := filepath.Join(path, attr)
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		glog.Warningf("Failed to read '%s' file at %s: %s", attr, file, err)
+		return ""
+	}
+	value := strings.TrimSpace(string(data))
+	return strings.ToUpper(strings.TrimPrefix(strings.ToLower(value), "0x"))
 }
 
 func GetCardProductName(cardName string) (string, error) {

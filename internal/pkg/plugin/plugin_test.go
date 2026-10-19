@@ -17,7 +17,11 @@
 package plugin
 
 import (
+	"reflect"
 	"testing"
+
+	"github.com/ROCm/k8s-device-plugin/internal/pkg/naming"
+	pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
 func TestCountGPUDevFromTopology(t *testing.T) {
@@ -26,5 +30,119 @@ func TestCountGPUDevFromTopology(t *testing.T) {
 	expCount := 2
 	if count != expCount {
 		t.Errorf("Count was incorrect, got: %d, want: %d.", count, expCount)
+	}
+}
+
+func gpu(numa int, compute, memory string) map[string]interface{} {
+	return map[string]interface{}{
+		"numaNode":             numa,
+		"computePartitionType": compute,
+		"memoryPartitionType":  memory,
+	}
+}
+
+func productGPU(numa int, compute, memory, deviceID, revisionID string) map[string]interface{} {
+	device := gpu(numa, compute, memory)
+	device["deviceID"] = deviceID
+	device["revisionID"] = revisionID
+	return device
+}
+
+func bucketSizes(buckets map[string][]*pluginapi.Device) map[string]int {
+	sizes := map[string]int{}
+	for resource, devs := range buckets {
+		sizes[resource] = len(devs)
+	}
+	return sizes
+}
+
+func TestBucketDevices(t *testing.T) {
+	products := naming.ProductIndex{
+		naming.ProductID{DeviceID: "74A1", RevisionID: "00"}: "gpu-mi300x",
+		naming.ProductID{DeviceID: "740F", RevisionID: "02"}: "gpu-mi210",
+	}
+
+	tests := []struct {
+		name     string
+		strategy naming.Strategy
+		products naming.ProductIndex
+		gpus     map[string]map[string]interface{}
+		want     map[string]int
+	}{
+		{
+			name:     "single serves the whole node as one resource",
+			strategy: naming.StrategySingle,
+			gpus: map[string]map[string]interface{}{
+				"0000:01:00.0": gpu(0, "spx", "nps1"),
+				"0000:02:00.0": gpu(1, "spx", "nps1"),
+			},
+			want: map[string]int{"gpu": 2},
+		},
+		{
+			name:     "mixed separates partition styles",
+			strategy: naming.StrategyMixed,
+			gpus: map[string]map[string]interface{}{
+				"0000:01:00.0": gpu(0, "spx", "nps1"),
+				"0000:02:00.0": gpu(1, "cpx", "nps4"),
+				"0000:03:00.0": gpu(1, "cpx", "nps4"),
+			},
+			want: map[string]int{"spx_nps1": 1, "cpx_nps4": 2},
+		},
+		{
+			// This GPU used to be keyed into a bucket getResourceList never
+			// advertised, so no plugin instance served it and it went unreported.
+			name:     "mixed reports an unpartitionable GPU alongside partitioned ones",
+			strategy: naming.StrategyMixed,
+			gpus: map[string]map[string]interface{}{
+				"0000:01:00.0": gpu(0, "cpx", "nps4"),
+				"0000:02:00.0": gpu(1, "", ""),
+			},
+			want: map[string]int{"cpx_nps4": 1, "gpu": 1},
+		},
+		{
+			// One partition style across the node, two products. The removed
+			// homogeneous fast path served every device under every registered
+			// name, which would have reported all 8 as both MI300X and MI210.
+			name:     "product separates products sharing a partition style",
+			strategy: naming.StrategyProduct,
+			products: products,
+			gpus: map[string]map[string]interface{}{
+				"0000:01:00.0": productGPU(0, "spx", "nps1", "74A1", "00"),
+				"0000:02:00.0": productGPU(0, "spx", "nps1", "74A1", "00"),
+				"0000:03:00.0": productGPU(1, "spx", "nps1", "740F", "02"),
+			},
+			want: map[string]int{"gpu-mi300x-spx-nps1": 2, "gpu-mi210-spx-nps1": 1},
+		},
+		{
+			name:     "product falls back to gpu for a device absent from the table",
+			strategy: naming.StrategyProduct,
+			products: products,
+			gpus: map[string]map[string]interface{}{
+				"0000:01:00.0": productGPU(0, "", "", "740F", "02"),
+				"0000:02:00.0": productGPU(1, "", "", "74FF", "00"),
+			},
+			want: map[string]int{"gpu-mi210": 1, "gpu": 1},
+		},
+		{
+			// An untabled part still must not pool a CPX partition with a
+			// whole GPU, which is what dropping the style here would do.
+			name:     "product keeps the partition style for an untabled device",
+			strategy: naming.StrategyProduct,
+			products: products,
+			gpus: map[string]map[string]interface{}{
+				"0000:01:00.0": productGPU(0, "cpx", "nps4", "74FF", "00"),
+				"0000:02:00.0": productGPU(1, "", "", "74FF", "00"),
+			},
+			want: map[string]int{"gpu-cpx-nps4": 1, "gpu": 1},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := bucketSizes(bucketDevices(tt.gpus, tt.strategy, tt.products))
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("bucketDevices() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
