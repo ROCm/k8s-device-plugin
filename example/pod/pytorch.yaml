@@ -4,6 +4,10 @@ metadata:
   name: pytorch-gpu-pod-example
 spec:
   restartPolicy: Never
+  securityContext:
+    # ROCm framework images run as root. Stated explicitly so the Pod does not
+    # inherit an unreviewed default.
+    runAsNonRoot: false
   containers:
   - name: pytorch-gpu-container
     image: rocm/pytorch:latest
@@ -24,3 +28,12 @@ spec:
     resources:
       limits:
         amd.com/gpu: 1  # Request 1 AMD GPU
+    securityContext:
+      # Matches the non-privileged configuration in
+      # docs/user-guide/configuration.md: GPU access comes from the device
+      # plugin, so the container needs no privileges of its own.
+      privileged: false
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        # ROCm needs syscalls the default profile blocks.
+        type: Unconfined

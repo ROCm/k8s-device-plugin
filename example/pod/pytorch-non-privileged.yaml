@@ -4,7 +4,13 @@ metadata:
   name: pytorch-non-privileged-gpu-pod
 spec:
   restartPolicy: Never
-  hostIPC: true  
+  securityContext:
+    # ROCm framework images run as root. Stated explicitly so the Pod does not
+    # inherit an unreviewed default.
+    runAsNonRoot: false
+  # Required for shared-memory transport between ROCm processes. See
+  # docs/user-guide/configuration.md, "Non-Privileged GPU Access".
+  hostIPC: true
   containers:
   - name: pytorch-gpu-container
     image: rocm/pytorch:latest

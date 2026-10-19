@@ -18,6 +18,10 @@ ARG GO_VERSION=1.27.2
 FROM golang:${GO_VERSION} AS gotoolchain
 
 FROM registry.access.redhat.com/ubi9/ubi:9.8 as builder
+# The device plugin reads GPU state from /sys and /dev/kfd and writes its
+# socket under /var/lib/kubelet, all root-owned on the host. A non-root USER
+# would leave the image unable to start.
+#trivy:ignore:AVD-DS-0002
 USER root
 RUN dnf install -y 'dnf-command(config-manager)' && \
     dnf config-manager --add-repo=https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/ && \

@@ -35,4 +35,9 @@ RUN apk --no-cache add ca-certificates libdrm
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-node-labeller .
 COPY --from=0 /go/src/github.com/ROCm/k8s-device-plugin/cmd/k8s-node-labeller/amdgpu.ids /usr/share/libdrm/amdgpu.ids
+# The labeller reads GPU state from /sys and /dev/dri, both root-owned on the
+# host. Already the default for this base image; stated so the requirement is
+# explicit, and so the check below has a line to attach to.
+#trivy:ignore:AVD-DS-0002
+USER root
 CMD ["./k8s-node-labeller"]

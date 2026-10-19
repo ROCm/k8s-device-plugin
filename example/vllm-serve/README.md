@@ -62,7 +62,13 @@ kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/maste
             emptyDir:
             medium: Memory
             sizeLimit: "8Gi"
+        securityContext:
+            # The ROCm vLLM image runs as root. Stated explicitly so the Pod
+            # does not inherit an unreviewed default.
+            runAsNonRoot: false
+        # Serves the model endpoint on the node address.
         hostNetwork: true
+        # Required for shared-memory transport between ROCm processes.
         hostIPC: true
         containers:
         - name: mistral-7b

@@ -15,6 +15,10 @@ metadata:
   name: pytorch-gpu-pod-example
 spec:
   restartPolicy: Never
+  securityContext:
+    # ROCm framework images run as root. Stated explicitly so the Pod does not
+    # inherit an unreviewed default.
+    runAsNonRoot: false
   containers:
   - name: gpu-container
     image: rocm/pytorch:latest
@@ -35,6 +39,15 @@ spec:
     resources:
       limits:
         amd.com/gpu: 1  # Request 1 AMD GPU
+    securityContext:
+      # Matches the non-privileged configuration in configuration.md: GPU
+      # access comes from the device plugin, so the container needs no
+      # privileges of its own.
+      privileged: false
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        # ROCm needs syscalls the default profile blocks.
+        type: Unconfined
 ```
 
 To run the example:
@@ -62,6 +75,10 @@ metadata:
   name: jax-multi-gpu-pod
 spec:
   restartPolicy: Never
+  securityContext:
+    # ROCm framework images run as root. Stated explicitly so the Pod does not
+    # inherit an unreviewed default.
+    runAsNonRoot: false
   containers:
   - name: multi-gpu-container
     image: rocm/jax:latest
@@ -97,6 +114,15 @@ spec:
     resources:
       limits:
         amd.com/gpu: 2  # Request 2 AMD GPUs
+    securityContext:
+      # Matches the non-privileged configuration in configuration.md: GPU
+      # access comes from the device plugin, so the container needs no
+      # privileges of its own.
+      privileged: false
+      allowPrivilegeEscalation: false
+      seccompProfile:
+        # ROCm needs syscalls the default profile blocks.
+        type: Unconfined
 ```
 
 To run the example:
@@ -124,6 +150,12 @@ metadata:
   name: jax-non-privileged-multi-gpu-pod
 spec:
   restartPolicy: Never
+  securityContext:
+    # ROCm framework images run as root. Stated explicitly so the Pod does not
+    # inherit an unreviewed default.
+    runAsNonRoot: false
+  # Required for shared-memory transport between ROCm processes. See
+  # configuration.md, "Non-Privileged GPU Access".
   hostIPC: true
   containers:
   - name: jax-multi-gpu-container
