@@ -1,0 +1,41 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+#
+# Trivy misconfiguration suppressions.
+# Reference: https://trivy.dev/latest/docs/configuration/filtering/
+#
+# The shared scan workflow discovers this file at the repository root and
+# passes it to trivy as --ignorefile (security_scanners/github_actions/trivy.py
+# in ROCm/rocm-security-gh). A config-file `ignorefile:` key would NOT work:
+# trivy resolves that against its own working directory, which is the
+# directory above the scanned checkout.
+#
+# This is trivy's plain-text format, which takes bare check IDs and so
+# disables a check everywhere. Only checks that no manifest in this repository
+# could reasonably satisfy belong here. Anything that is wrong for one file but
+# worth catching in another stays out, and is handled by `scan.skip-files` in
+# .github/scan_tools_configs/trivy.yml instead.
+#
+# Scoping a suppression to a path, with its justification attached, needs
+# trivy's `.trivyignore.yaml` format, which the shared workflow does not look
+# for. Tracked in ROCm/rocm-security-gh#37; when that lands, these entries and
+# the remaining skip-files both become per-check, per-path entries.
+
+# Every container this repository ships or documents needs a writable root
+# filesystem. The ROCm framework images in example/ write JIT and kernel
+# caches (MIOpen, Keras, Triton) to it, and the device plugin and labeller
+# write the device-plugin socket under /var/lib/kubelet. Enabling it would
+# need a writable emptyDir per cache path -- a set that differs per framework
+# and per image tag, and that no CI here can validate on GPU hardware.
+AVD-KSV-0014
+
+# hostIPC is required for shared-memory transport between ROCm processes.
+# docs/user-guide/configuration.md, "Non-Privileged GPU Access", documents it
+# as part of a configuration that testing with AMD ROCm containers found to
+# give reliable non-privileged GPU access.
+AVD-KSV-0008
+
+# The vLLM serving example uses hostNetwork so the model endpoint is reachable
+# on the node address, which is what example/vllm-serve/README.md walks
+# through.
+AVD-KSV-0009
