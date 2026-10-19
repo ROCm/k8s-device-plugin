@@ -228,6 +228,10 @@ kind: Pod
 metadata:
   name: gpu-workload
 spec:
+  securityContext:
+    # ROCm framework images run as root. Stated explicitly so the Pod does not
+    # inherit an unreviewed default.
+    runAsNonRoot: false
   hostIPC: true
   containers:
   - name: gpu-container
@@ -250,3 +254,4 @@ spec:
 - `privileged: false`: Ensures the container doesn't run with full host privileges
 - `allowPrivilegeEscalation: false`: Prevents the process from gaining additional privileges
 - `seccompProfile.type: Unconfined`: Allows necessary system calls for GPU operations
+- `runAsNonRoot: false`: ROCm framework images run as root. Setting it explicitly records that as a reviewed choice rather than an inherited default

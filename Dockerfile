@@ -39,4 +39,10 @@ RUN apk --no-cache add ca-certificates libdrm
 RUN apk --no-cache add hwloc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
 WORKDIR /root/
 COPY --from=0 /go/bin/k8s-device-plugin .
+# The device plugin reads GPU state from /sys and /dev/kfd and writes its
+# socket under /var/lib/kubelet, all root-owned on the host. Already the
+# default for this base image; stated so the requirement is explicit, and so
+# the check below has a line to attach to.
+#trivy:ignore:AVD-DS-0002
+USER root
 CMD ["./k8s-device-plugin", "-logtostderr=true", "-stderrthreshold=INFO", "-v=5"]
