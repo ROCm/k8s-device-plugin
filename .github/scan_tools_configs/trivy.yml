@@ -28,6 +28,11 @@
 # Environment and generated-output exclusions support local scans; these
 # paths are absent from clean CI checkouts.
 scan:
+  # Environment and generated-output exclusions support local scans; these
+  # paths are absent from clean CI checkouts. `vendor` is the exception: it is
+  # committed, and it carries upstream test fixtures (for example
+  # k8s.io/apimachinery's managedfields/pod.yaml) that are never deployed and
+  # that `go mod vendor` would overwrite if they were edited.
   skip-dirs:
     - .git
     - .venv*
@@ -36,3 +41,25 @@ scan:
     - dist
     - node_modules
     - __pycache__
+    - vendor
+
+  # Only the DaemonSets. The example manifests are scanned normally -- the
+  # three checks that fire on them are intrinsic to every GPU workload, so
+  # they live in .trivyignore, which leaves every other check live on those
+  # files. KSV-0118 in particular stays live there, which is what keeps the
+  # explicit security contexts in example/pod/*.yaml from regressing.
+  skip-files:
+    # A device plugin is privileged by construction: it enumerates GPUs
+    # through /sys and /dev/kfd, and registers over the kubelet's
+    # device-plugin socket. KSV-0005 (SYS_ADMIN), KSV-0017 (privileged) and
+    # KSV-0121 (hostPath) have no fix that leaves a working plugin, and
+    # KSV-0118 wants a pod-level context that would add nothing a reader
+    # could act on -- these set what they need at container level.
+    #
+    # Those four are deliberately NOT in .trivyignore: each is worth catching
+    # if it ever appears in an example manifest or a new DaemonSet.
+    - k8s-ds-amdgpu-dp.yaml
+    - k8s-ds-amdgpu-dp-health.yaml
+    - k8s-ds-amdgpu-dp-with-init-container.yaml
+    - k8s-ds-amdgpu-labeller.yaml
+    - k8s-ds-amdgpu-labeller-with-init-container.yaml
