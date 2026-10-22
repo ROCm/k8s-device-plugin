@@ -32,7 +32,8 @@ jobs:
       actions: read
       contents: read
       pull-requests: write
-    uses: ROCm/rocm-security-gh/.github/workflows/security-baseline.yml@f92f9387d10fe91a0293762bdcefd3ba012a827b # v1.0.7
+    # Trust Security-managed v1 updates to minimize developer update noise.
+    uses: ROCm/rocm-security-gh/.github/workflows/security-baseline.yml@v1
     with:
       report_formats: human
       bandit_config_path: .github/scan_tools_configs/bandit.yml
