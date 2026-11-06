@@ -351,6 +351,30 @@ func filterPartitions(partitions map[string]*DevicePartitions, available, requir
 	return outset
 }
 
+// parentSetKey identifies a partially built subset by the GPU groups it covers.
+// Groups that were taken whole are order independent, so they are sorted, while
+// the group the subset is truncated on decides which devices it ends up with
+// and is kept separate. Two expansions with the same key produce the same set
+// of devices and only differ in the order they were reached.
+func parentSetKey(wholeGroups []int, truncatedGroup int) string {
+	sorted := make([]int, len(wholeGroups))
+	copy(sorted, wholeGroups)
+	sort.Ints(sorted)
+
+	var key strings.Builder
+	for i, group := range sorted {
+		if i > 0 {
+			key.WriteByte(',')
+		}
+		key.WriteString(strconv.Itoa(group))
+	}
+	if truncatedGroup >= 0 {
+		key.WriteByte('|')
+		key.WriteString(strconv.Itoa(truncatedGroup))
+	}
+	return key.String()
+}
+
 func getCandidateDeviceSubsets(allDevPartitions map[string]*DevicePartitions, total, available, required []*Device, size int, p2pWeights map[int]map[int]int) ([]*DeviceSet, error) {
 	if size <= 0 {
 		return []*DeviceSet{}, fmt.Errorf("subset size should be positive integer")
@@ -403,6 +427,9 @@ func getCandidateDeviceSubsets(allDevPartitions map[string]*DevicePartitions, to
 	}
 	// for each subsetsTemp, we loop over all the devPartitions
 	// pick partitions from other gpu until the subsetsTemp has requested number of gpus/partitions
+	// expanded records the group combinations already grown, so a combination is
+	// only expanded once instead of once per order it can be reached in
+	expanded := make(map[string]struct{})
 	for {
 		if len(subsetsTemp) == 0 {
 			break
@@ -423,6 +450,18 @@ func getCandidateDeviceSubsets(allDevPartitions map[string]*DevicePartitions, to
 			var parentIds []int
 			parentIds = append(parentIds, currentSubset.ParentIds...)
 			parentIds = append(parentIds, idx)
+
+			// this gpu is taken whole unless it overshoots the requested size,
+			// in which case which gpu got truncated decides the devices picked
+			key := parentSetKey(parentIds, -1)
+			if len(currentSubset.Ids)+len(devPartitions[idx].Ids) > newSize {
+				key = parentSetKey(currentSubset.ParentIds, idx)
+			}
+			if _, seen := expanded[key]; seen {
+				continue
+			}
+			expanded[key] = struct{}{}
+
 			devset := NewDeviceSet(currentSubset.Ids, parentIds, currentSubset.TotalWeight, currentSubset.LastIdx)
 			for _, id := range devPartitions[idx].Ids {
 				devset = addDeviceToSubsetAndUpdateWeight(devset, id, idx, p2pWeights)
