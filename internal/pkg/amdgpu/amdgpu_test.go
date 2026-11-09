@@ -268,3 +268,93 @@ func TestRenderDevIdsFromTopology(t *testing.T) {
 		t.Errorf("Want: %s", exp)
 	}
 }
+
+func TestGetGPUIdsFromTopologyReadErrorsFailClosed(t *testing.T) {
+	root := t.TempDir()
+	nodes := filepath.Join(root, "topology", "nodes")
+	writeNode := func(node, minor, gpuID string, gpuIDIsDir bool) {
+		t.Helper()
+		dir := filepath.Join(nodes, node)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "properties"), []byte("drm_render_minor "+minor+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if gpuID == "" && !gpuIDIsDir {
+			return
+		}
+		gpuIDPath := filepath.Join(dir, "gpu_id")
+		if gpuIDIsDir {
+			if err := os.Mkdir(gpuIDPath, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		if err := os.WriteFile(gpuIDPath, []byte(gpuID+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeNode("1", "128", "", false)
+	writeNode("2", "129", "30939", false)
+	writeNode("3", "130", "", true)
+	writeNode("4", "131", "nope", false)
+
+	ids, unavailable, incomplete := GetGPUIdsFromTopology(root)
+	if incomplete {
+		t.Fatalf("complete topology was marked incomplete: unavailable=%v", unavailable)
+	}
+	if len(ids) != 1 || ids[129] != 30939 {
+		t.Fatalf("gpu ids = %v, want render minor 129 -> 30939", ids)
+	}
+	if _, ok := unavailable[128]; ok {
+		t.Fatalf("missing gpu_id was treated as unreadable: %v", unavailable)
+	}
+	if _, ok := unavailable[130]; !ok {
+		t.Fatalf("unreadable gpu_id was ignored: %v", unavailable)
+	}
+	if _, ok := unavailable[131]; !ok {
+		t.Fatalf("invalid gpu_id was ignored: %v", unavailable)
+	}
+}
+
+func TestGetGPUIdsFromTopologyUnparsedNodeFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	nodes := filepath.Join(root, "topology", "nodes")
+	write := func(node, properties, gpuID string) {
+		t.Helper()
+		dir := filepath.Join(nodes, node)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "properties"), []byte(properties), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if gpuID == "" {
+			return
+		}
+		if err := os.WriteFile(filepath.Join(dir, "gpu_id"), []byte(gpuID+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("1", "drm_render_minor 129\n", "30939")
+	write("2", "cpu_cores 4\n", "99")
+	write("3", "drm_render_minor 128\n", "")
+
+	ids, unavailable, incomplete := GetGPUIdsFromTopology(root)
+	if !incomplete {
+		t.Fatal("node with gpu_id and no render minor was skipped")
+	}
+	if len(ids) != 1 || ids[129] != 30939 {
+		t.Fatalf("gpu ids = %v, want the parsed node preserved", ids)
+	}
+	if _, ok := unavailable[128]; ok {
+		t.Fatalf("legacy node was marked unreadable: %v", unavailable)
+	}
+	if gpuIDUnavailableFor(128, ids, unavailable, incomplete) != true {
+		t.Fatal("unmapped render minor stayed available after a topology parse failure")
+	}
+	if gpuIDUnavailableFor(129, ids, unavailable, incomplete) {
+		t.Fatal("parsed render minor was marked unavailable")
+	}
+}

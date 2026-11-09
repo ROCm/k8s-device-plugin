@@ -167,11 +167,14 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 
 	devID := ""
 	devices := make(map[string]map[string]interface{})
-	card, renderD, nodeId := 0, 128, 0
+	card, renderD, nodeId, gpuId := 0, 128, 0, 0
 	renderDevIds := GetDevIdsFromTopology()
 	renderNodeIds := GetNodeIdsFromTopology()
+	renderGPUIds, gpuIDReadFailed, gpuMapIncomplete := GetGPUIdsFromTopology()
 
 	for _, path := range matches {
+		gpuId = 0
+		gpuIDUnavailable := false
 		computePartitionFile := filepath.Join(path, "current_compute_partition")
 		memoryPartitionFile := filepath.Join(path, "current_memory_partition")
 		numaNodeFile := filepath.Join(path, "numa_node")
@@ -224,11 +227,17 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 				if id, exists := renderNodeIds[renderD]; exists {
 					nodeId = id
 				}
+				if id, exists := renderGPUIds[renderD]; exists {
+					gpuId = id
+				}
+				if gpuIDUnavailableFor(renderD, renderGPUIds, gpuIDReadFailed, gpuMapIncomplete) {
+					gpuIDUnavailable = true
+				}
 			}
 
 		}
 		// add devID so that we can identify later which gpu should get reported under which resource type
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId, "deviceID": deviceID, "revisionID": revisionID}
+		devices[filepath.Base(path)] = kfdDeviceRecord(card, renderD, devID, computePartitionType, memoryPartitionType, numaNode, nodeId, deviceID, revisionID, gpuId, gpuIDUnavailable)
 	}
 
 	// certain products have additional devices (such as MI300's partitions)
@@ -236,6 +245,8 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 	platformMatches, _ := filepath.Glob("/sys/devices/platform/amdgpu_xcp_*")
 
 	for _, path := range platformMatches {
+		gpuId = 0
+		gpuIDUnavailable := false
 		glog.Info(path)
 		devPaths, _ := filepath.Glob(path + "/drm/*")
 
@@ -269,6 +280,12 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 				if id, exists := renderNodeIds[renderD]; exists {
 					nodeId = id
 				}
+				if id, exists := renderGPUIds[renderD]; exists {
+					gpuId = id
+				}
+				if gpuIDUnavailableFor(renderD, renderGPUIds, gpuIDReadFailed, gpuMapIncomplete) {
+					gpuIDUnavailable = true
+				}
 			}
 		}
 		// This is needed because some of the visible renderD are actually not valid
@@ -280,7 +297,7 @@ func GetAMDGPUs() map[string]map[string]interface{} {
 		if numaNode == -1 {
 			continue
 		}
-		devices[filepath.Base(path)] = map[string]interface{}{"card": card, "renderD": renderD, "devID": devID, "computePartitionType": computePartitionType, "memoryPartitionType": memoryPartitionType, "numaNode": numaNode, "nodeId": nodeId, "deviceID": deviceID, "revisionID": revisionID}
+		devices[filepath.Base(path)] = kfdDeviceRecord(card, renderD, devID, computePartitionType, memoryPartitionType, numaNode, nodeId, deviceID, revisionID, gpuId, gpuIDUnavailable)
 	}
 	glog.Infof("Devices map: %v", devices)
 	return devices
@@ -511,6 +528,106 @@ func parseDebugFSFirmwareInfo(path string) (map[string]uint32, map[string]uint32
 var topoDrmRenderMinorRe = regexp.MustCompile(`drm_render_minor\s(\d+)`)
 var topoLocationIdRe = regexp.MustCompile(`location_id\s(\d+)`)
 var topoDomainRe = regexp.MustCompile(`domain\s(\d+)`)
+
+// kfdGPUId is the suffix of vram_<id> under /sys/class/kfd/kfd/proc/<pid>/.
+// The kernel uses the topology gpu_id. Older trees that have no gpu_id file
+// keep the topology node index, which used to be that suffix.
+func kfdGPUId(gpuId, nodeId int) int {
+	if gpuId > 0 {
+		return gpuId
+	}
+	return nodeId
+}
+
+// kfdDeviceRecord is one discovered GPU. gpuIdUnavailable means a gpu_id file
+// was present but could not be read; occupancy must fail closed instead of
+// guessing the topology node index.
+func kfdDeviceRecord(card, renderD int, devID, computePartitionType, memoryPartitionType string, numaNode, nodeId int, deviceID, revisionID string, gpuId int, gpuIDUnavailable bool) map[string]interface{} {
+	record := map[string]interface{}{
+		"card":                 card,
+		"renderD":              renderD,
+		"devID":                devID,
+		"computePartitionType": computePartitionType,
+		"memoryPartitionType":  memoryPartitionType,
+		"numaNode":             numaNode,
+		"nodeId":               nodeId,
+		"deviceID":             deviceID,
+		"revisionID":           revisionID,
+	}
+	if gpuIDUnavailable {
+		record["gpuIdUnavailable"] = true
+		return record
+	}
+	record["gpuId"] = kfdGPUId(gpuId, nodeId)
+	return record
+}
+
+// GetGPUIdsFromTopology maps a DRM render minor to the KFD gpu_id that names
+// per-process VRAM counters (vram_<gpu_id>). The second map lists render
+// minors whose gpu_id file exists but could not be read. The bool is true
+// when a node has a gpu_id file but its properties do not yield a render
+// minor. Callers must fail closed for every render minor that is not in the
+// first map in that case, instead of guessing the topology node index. A
+// missing gpu_id file is the legacy layout and is left out of both maps.
+func GetGPUIdsFromTopology(topoRootParam ...string) (map[int]int, map[int]struct{}, bool) {
+	topoRoot := "/sys/class/kfd/kfd"
+	if len(topoRootParam) == 1 {
+		topoRoot = topoRootParam[0]
+	}
+
+	renderGPUIds := make(map[int]int)
+	unavailable := make(map[int]struct{})
+	incomplete := false
+	nodeFiles, err := filepath.Glob(topoRoot + "/topology/nodes/*/properties")
+	if err != nil {
+		glog.Errorf("glob error: %s", err)
+		return renderGPUIds, unavailable, true
+	}
+
+	for _, nodeFile := range nodeFiles {
+		gpuIDPath := filepath.Join(filepath.Dir(nodeFile), "gpu_id")
+		renderMinor, err := ParseTopologyProperties(nodeFile, topoDrmRenderMinorRe)
+		if err != nil || renderMinor <= 0 {
+			if _, statErr := os.Stat(gpuIDPath); statErr == nil {
+				glog.Errorf("KFD topology node %s has gpu_id but no usable drm_render_minor (%d): %v", nodeFile, renderMinor, err)
+				incomplete = true
+			}
+			continue
+		}
+		data, err := os.ReadFile(gpuIDPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			glog.Errorf("failed to read KFD gpu_id %s: %v", gpuIDPath, err)
+			unavailable[int(renderMinor)] = struct{}{}
+			continue
+		}
+		gpuID, err := strconv.Atoi(strings.TrimSpace(string(data)))
+		if err != nil || gpuID <= 0 {
+			glog.Errorf("KFD gpu_id %s is not a positive integer: %q", gpuIDPath, strings.TrimSpace(string(data)))
+			unavailable[int(renderMinor)] = struct{}{}
+			continue
+		}
+		renderGPUIds[int(renderMinor)] = gpuID
+	}
+	return renderGPUIds, unavailable, incomplete
+}
+
+// gpuIDUnavailableFor reports that occupancy must not guess a VRAM counter
+// suffix. A render minor is unavailable when its own gpu_id could not be
+// read, or when another GPU node failed to map and this render minor has no
+// positive gpu_id of its own.
+func gpuIDUnavailableFor(renderD int, ids map[int]int, failed map[int]struct{}, incomplete bool) bool {
+	if _, ok := failed[renderD]; ok {
+		return true
+	}
+	if !incomplete {
+		return false
+	}
+	_, mapped := ids[renderD]
+	return !mapped
+}
 
 func GetNodeIdsFromTopology(topoRootParam ...string) map[int]int {
 	topoRoot := "/sys/class/kfd/kfd"

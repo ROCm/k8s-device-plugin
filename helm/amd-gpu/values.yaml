@@ -15,6 +15,13 @@ dp:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  # Reclaim is off unless this is enabled. Turning it on sets hostPID,
+  # passes -occupancy_reclaim, and adds CAP_KILL. The chart container is
+  # not privileged and otherwise drops every capability.
+  occupancyReclaim:
+    enabled: false
+    timeout: 60s
+    cooldown: 60s
 
 lbl:
   image:
