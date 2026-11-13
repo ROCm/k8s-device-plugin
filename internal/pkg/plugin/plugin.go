@@ -19,6 +19,7 @@ package plugin
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -26,7 +27,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/allocator"
 	"github.com/ROCm/k8s-device-plugin/internal/pkg/amdgpu"
@@ -48,12 +51,36 @@ type AMDGPUPlugin struct {
 	Products           naming.ProductIndex
 	devAllocator       allocator.Policy
 	allocatorInitError bool
+	occupancyCheck     bool
+	occupancyReclaim   bool
+	reclaimTimeout     time.Duration
+	reclaimCooldown    time.Duration
+	inspector          *kfdInspector
+	quarantine         map[string]time.Time
+	quarantineMu       sync.Mutex
+	healthNotify       chan struct{}
+	recheckInterval    time.Duration
+	recheckRunning     bool
 }
+
+// quarantineRecheckInterval is how often a quarantined GPU is checked for
+// released VRAM after its cooldown when kubelet sends no further RPCs.
+const quarantineRecheckInterval = time.Second
+
+// quarantineBeforeClear runs while expireQuarantine holds no lock.
+var quarantineBeforeClear func()
 
 type AMDGPUPluginOption func(*AMDGPUPlugin)
 
 func NewAMDGPUPlugin(options ...AMDGPUPluginOption) *AMDGPUPlugin {
-	amdGpuPlugin := &AMDGPUPlugin{}
+	amdGpuPlugin := &AMDGPUPlugin{
+		healthNotify:    make(chan struct{}, 1),
+		quarantine:      map[string]time.Time{},
+		inspector:       newKFDInspector(),
+		reclaimTimeout:  DefaultReclaimTimeout,
+		reclaimCooldown: DefaultReclaimCooldown,
+		recheckInterval: quarantineRecheckInterval,
+	}
 	for _, option := range options {
 		option(amdGpuPlugin)
 	}
@@ -74,6 +101,27 @@ func WithHeartbeat(ch chan bool) AMDGPUPluginOption {
 func WithResource(res string) AMDGPUPluginOption {
 	return func(p *AMDGPUPlugin) {
 		p.Resource = res
+	}
+}
+
+func WithOccupancyCheck(enabled bool) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.occupancyCheck = enabled
+	}
+}
+
+func WithOccupancyReclaim(enabled bool, timeout, cooldown time.Duration) AMDGPUPluginOption {
+	return func(p *AMDGPUPlugin) {
+		p.occupancyReclaim = enabled
+		if enabled {
+			p.occupancyCheck = true
+		}
+		if timeout > 0 {
+			p.reclaimTimeout = timeout
+		}
+		if cooldown > 0 {
+			p.reclaimCooldown = cooldown
+		}
 	}
 }
 
@@ -224,10 +272,13 @@ func simpleHealthCheck() bool {
 // Manager
 func (p *AMDGPUPlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.Empty) (*pluginapi.DevicePluginOptions, error) {
 	if p.allocatorInitError {
-		return &pluginapi.DevicePluginOptions{}, nil
+		return &pluginapi.DevicePluginOptions{
+			PreStartRequired: p.occupancyCheck,
+		}, nil
 	}
 	return &pluginapi.DevicePluginOptions{
 		GetPreferredAllocationAvailable: true,
+		PreStartRequired:                p.occupancyCheck,
 	}, nil
 }
 
@@ -235,6 +286,9 @@ func (p *AMDGPUPlugin) GetDevicePluginOptions(ctx context.Context, e *pluginapi.
 // PreStartContainer allows kubelet to pass reinitialized devices to containers.
 // PreStartContainer allows Device Plugin to run device specific operations on the Devices requested
 func (p *AMDGPUPlugin) PreStartContainer(ctx context.Context, r *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
+	if err := p.prepareRequestedGPUs(ctx, r.DevicesIDs); err != nil {
+		return nil, err
+	}
 	return &pluginapi.PreStartContainerResponse{}, nil
 }
 
@@ -278,23 +332,19 @@ func (p *AMDGPUPlugin) ListAndWatch(e *pluginapi.Empty, s pluginapi.DevicePlugin
 		glog.Warningf("No devices bucketed as %s; leaving its reported capacity unchanged", p.Resource)
 	} else {
 		glog.Infof("Reporting %d devices as %s", len(devs), p.Resource)
-		s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+		p.publishDevices(s, devs, false)
 	}
 
 loop:
 	for {
 		select {
 		case <-p.Heartbeat:
-			var health = pluginapi.Unhealthy
-
-			if simpleHealthCheck() {
-				health = pluginapi.Healthy
-			}
-
-			// update with per device GPU health status
 			if exists {
-				exporter.PopulatePerGPUDHealth(devs, health)
-				s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+				p.publishDevices(s, devs, true)
+			}
+		case <-p.healthNotify:
+			if exists {
+				p.publishDevices(s, devs, true)
 			}
 
 		case <-s.Context().Done():
@@ -318,8 +368,9 @@ loop:
 // informed allocation decision when possible.
 func (p *AMDGPUPlugin) GetPreferredAllocation(ctx context.Context, req *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
 	response := &pluginapi.PreferredAllocationResponse{}
-	for _, req := range req.ContainerRequests {
-		allocated_ids, err := p.devAllocator.Allocate(req.AvailableDeviceIDs, req.MustIncludeDeviceIDs, int(req.AllocationSize))
+	for _, containerReq := range req.ContainerRequests {
+		available := p.availableForAllocation(containerReq.AvailableDeviceIDs, containerReq.MustIncludeDeviceIDs, int(containerReq.AllocationSize))
+		allocated_ids, err := p.devAllocator.Allocate(available, containerReq.MustIncludeDeviceIDs, int(containerReq.AllocationSize))
 		if err != nil {
 			glog.Errorf("unable to get preferred allocation list. Error:%v", err)
 			return nil, fmt.Errorf("unable to get preferred allocation list. Error:%v", err)
@@ -342,6 +393,10 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 
 	for _, req := range r.ContainerRequests {
 		car = pluginapi.ContainerAllocateResponse{}
+
+		if err := p.prepareRequestedGPUs(ctx, req.DevicesIDs); err != nil {
+			return nil, err
+		}
 
 		// Currently, there are only 1 /dev/kfd per nodes regardless of the # of GPU available
 		// for compute/rocm/HSA use cases
@@ -374,15 +429,290 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 	return &response, nil
 }
 
+func (p *AMDGPUPlugin) publishDevices(s pluginapi.DevicePlugin_ListAndWatchServer, devs []*pluginapi.Device, refresh bool) {
+	if refresh {
+		health := pluginapi.Unhealthy
+		if simpleHealthCheck() {
+			health = pluginapi.Healthy
+		}
+		exporter.PopulatePerGPUDHealth(devs, health)
+	}
+	p.expireQuarantine(time.Now())
+	p.applyQuarantine(devs)
+	s.Send(&pluginapi.ListAndWatchResponse{Devices: devs})
+}
+
+// prepareRequestedGPUs logs KFD VRAM occupants and, when reclaim is enabled,
+// signals orphaned container processes and waits until each GPU is free.
+// The first error stops the batch so later GPUs are not signaled. A reclaim
+// timeout, or a cancellation that leaves VRAM allocated, quarantines that GPU.
+func (p *AMDGPUPlugin) prepareRequestedGPUs(ctx context.Context, ids []string) error {
+	if !p.occupancyCheck || len(ids) == 0 {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	p.expireQuarantine(time.Now())
+	for _, id := range ids {
+		if err := p.prepareOneGPU(ctx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// kfdCounterID is the suffix of the per-process VRAM file for this GPU.
+// Prefer the topology gpu_id. A gpu_id file that could not be read fails
+// closed. Devices discovered on a tree that has no gpu_id file fall back
+// to the topology node index.
+func kfdCounterID(device map[string]interface{}) (int, bool) {
+	if device == nil {
+		return 0, false
+	}
+	if unavailable, ok := device["gpuIdUnavailable"].(bool); ok && unavailable {
+		return 0, false
+	}
+	if id, ok := device["gpuId"].(int); ok && id > 0 {
+		return id, true
+	}
+	id, ok := device["nodeId"].(int)
+	if !ok || id < 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+func (p *AMDGPUPlugin) prepareOneGPU(ctx context.Context, id string) error {
+	if p.occupancyReclaim && p.isQuarantined(id) {
+		return fmt.Errorf("GPU %s is quarantined after VRAM reclaim failed", id)
+	}
+	device, ok := p.AMDGPUs[id]
+	if !ok || device == nil {
+		return fmt.Errorf("cannot check occupancy for unknown GPU %s", id)
+	}
+	counterID, ok := kfdCounterID(device)
+	if !ok {
+		return fmt.Errorf("cannot check occupancy for GPU %s: KFD gpu_id unavailable", id)
+	}
+	if p.inspector == nil {
+		return fmt.Errorf("cannot inspect KFD process state for GPU %s", id)
+	}
+	err := p.inspector.prepare(ctx, id, counterID, p.occupancyReclaim, p.reclaimTimeout)
+	if err != nil {
+		var timeout *reclaimTimeoutError
+		canceled := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+		// prepare returns a context error only when VRAM is still allocated.
+		if errors.As(err, &timeout) || canceled {
+			p.quarantineGPU(id)
+		}
+		return err
+	}
+	if p.clearQuarantine(id) {
+		p.notifyHealth()
+	}
+	return nil
+}
+
+func (p *AMDGPUPlugin) availableForAllocation(available, mustInclude []string, size int) []string {
+	p.expireQuarantine(time.Now())
+	blocked := p.quarantinedSet()
+	if len(blocked) == 0 {
+		return available
+	}
+	for _, id := range mustInclude {
+		if _, ok := blocked[id]; ok {
+			return available
+		}
+	}
+	filtered := make([]string, 0, len(available))
+	for _, id := range available {
+		if _, ok := blocked[id]; !ok {
+			filtered = append(filtered, id)
+		}
+	}
+	if len(filtered) < size {
+		return available
+	}
+	return filtered
+}
+
+func (p *AMDGPUPlugin) quarantineGPU(id string) {
+	cooldown := p.reclaimCooldown
+	if cooldown <= 0 {
+		cooldown = DefaultReclaimCooldown
+	}
+	until := time.Now().Add(cooldown)
+	p.quarantineMu.Lock()
+	if p.quarantine == nil {
+		p.quarantine = map[string]time.Time{}
+	}
+	p.quarantine[id] = until
+	startRecheck := !p.recheckRunning && p.recheckInterval > 0
+	if startRecheck {
+		p.recheckRunning = true
+	}
+	interval := p.recheckInterval
+	p.quarantineMu.Unlock()
+	glog.Errorf("GPU %s quarantined until %s because VRAM reclaim did not finish", id, until.Format(time.RFC3339))
+	p.notifyHealth()
+	if startRecheck {
+		go p.quarantineRecheckLoop(interval)
+	}
+}
+
+// quarantineRecheckLoop clears quarantine once the cooldown has elapsed and
+// KFD VRAM is free, then republishes health. It stops once no GPU remains
+// quarantined. An occupied GPU stays quarantined past the cooldown.
+func (p *AMDGPUPlugin) quarantineRecheckLoop(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for range ticker.C {
+		p.expireQuarantine(time.Now())
+		p.quarantineMu.Lock()
+		empty := len(p.quarantine) == 0
+		if empty {
+			p.recheckRunning = false
+		}
+		p.quarantineMu.Unlock()
+		if empty {
+			return
+		}
+	}
+}
+
+func (p *AMDGPUPlugin) clearQuarantine(id string) bool {
+	p.quarantineMu.Lock()
+	defer p.quarantineMu.Unlock()
+	if _, ok := p.quarantine[id]; !ok {
+		return false
+	}
+	delete(p.quarantine, id)
+	return true
+}
+
+func (p *AMDGPUPlugin) isQuarantined(id string) bool {
+	p.quarantineMu.Lock()
+	defer p.quarantineMu.Unlock()
+	_, ok := p.quarantine[id]
+	return ok
+}
+
+func (p *AMDGPUPlugin) quarantinedSet() map[string]struct{} {
+	p.quarantineMu.Lock()
+	defer p.quarantineMu.Unlock()
+	blocked := make(map[string]struct{}, len(p.quarantine))
+	for id := range p.quarantine {
+		blocked[id] = struct{}{}
+	}
+	return blocked
+}
+
+func (p *AMDGPUPlugin) expireQuarantine(now time.Time) {
+	p.quarantineMu.Lock()
+	pending := make(map[string]time.Time, len(p.quarantine))
+	for id, until := range p.quarantine {
+		pending[id] = until
+	}
+	p.quarantineMu.Unlock()
+	if len(pending) == 0 {
+		return
+	}
+
+	if quarantineBeforeClear != nil {
+		quarantineBeforeClear()
+	}
+
+	type quarantineCandidate struct {
+		id    string
+		until time.Time
+	}
+	var clear []quarantineCandidate
+	for id, until := range pending {
+		// Cooldown expiry is not enough. A GPU that still holds VRAM stays
+		// quarantined so the next request does not signal it again.
+		if now.Before(until) || !p.gpuVRAMFree(id) {
+			continue
+		}
+		clear = append(clear, quarantineCandidate{id: id, until: until})
+	}
+	if len(clear) == 0 {
+		return
+	}
+
+	p.quarantineMu.Lock()
+	cleared := false
+	for _, item := range clear {
+		current, ok := p.quarantine[item.id]
+		// A reclaim that timed out again while VRAM was being probed
+		// installs a later deadline. Drop only the snapshot we decided on.
+		if !ok || !current.Equal(item.until) {
+			continue
+		}
+		delete(p.quarantine, item.id)
+		cleared = true
+		glog.Infof("GPU %s left VRAM quarantine", item.id)
+	}
+	p.quarantineMu.Unlock()
+	if cleared {
+		p.notifyHealth()
+	}
+}
+
+func (p *AMDGPUPlugin) gpuVRAMFree(id string) bool {
+	if p.inspector == nil || p.AMDGPUs == nil {
+		return false
+	}
+	device, ok := p.AMDGPUs[id]
+	if !ok || device == nil {
+		return false
+	}
+	counterID, ok := kfdCounterID(device)
+	if !ok {
+		return false
+	}
+	occupants, err := p.inspector.listOccupants(counterID)
+	if err != nil {
+		return false
+	}
+	return len(occupants) == 0
+}
+
+func (p *AMDGPUPlugin) applyQuarantine(devs []*pluginapi.Device) {
+	blocked := p.quarantinedSet()
+	if len(blocked) == 0 {
+		return
+	}
+	for _, dev := range devs {
+		if _, ok := blocked[dev.ID]; ok {
+			dev.Health = pluginapi.Unhealthy
+		}
+	}
+}
+
+func (p *AMDGPUPlugin) notifyHealth() {
+	if p.healthNotify == nil {
+		return
+	}
+	select {
+	case p.healthNotify <- struct{}{}:
+	default:
+	}
+}
+
 // Lister serves as an interface between imlementation and Manager machinery. User passes
 // implementation of this interface to NewManager function. Manager will use it to obtain resource
 // namespace, monitor available resources and instantate a new plugin for them.
 type AMDGPULister struct {
-	ResUpdateChan chan dpm.PluginNameList
-	Heartbeat     chan bool
-	Signal        chan os.Signal
-	Strategy      naming.Strategy
-	Products      naming.ProductIndex
+	ResUpdateChan    chan dpm.PluginNameList
+	Heartbeat        chan bool
+	Signal           chan os.Signal
+	Strategy         naming.Strategy
+	Products         naming.ProductIndex
+	OccupancyCheck   bool
+	OccupancyReclaim bool
+	ReclaimTimeout   time.Duration
+	ReclaimCooldown  time.Duration
 }
 
 // GetResourceNamespace must return namespace (vendor ID) of implemented Lister. e.g. for
@@ -419,6 +749,8 @@ func (l *AMDGPULister) NewPlugin(resourceLastName string) dpm.PluginInterface {
 		WithStrategy(l.Strategy),
 		WithProducts(l.Products),
 		WithAllocator(allocator.NewBestEffortPolicy()),
+		WithOccupancyCheck(l.OccupancyCheck),
+		WithOccupancyReclaim(l.OccupancyReclaim, l.ReclaimTimeout, l.ReclaimCooldown),
 	}
 	return NewAMDGPUPlugin(options...)
 }

@@ -16,6 +16,9 @@ spec:
       labels:
         name: {{ .Chart.Name }}-dp-ds
     spec:
+      {{- if .Values.dp.occupancyReclaim.enabled }}
+      hostPID: true
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -34,8 +37,22 @@ spec:
       containers:
         - name: {{ .Chart.Name }}-dp-cntr
           image: {{ .Values.dp.image.repository }}:{{ .Values.dp.image.tag | default .Chart.AppVersion }}
+          {{- if .Values.dp.occupancyReclaim.enabled }}
+          args:
+            - -occupancy_reclaim
+            - -occupancy_reclaim_timeout={{ .Values.dp.occupancyReclaim.timeout }}
+            - -occupancy_reclaim_cooldown={{ .Values.dp.occupancyReclaim.cooldown }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - KILL
+          {{- else }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: dp
               mountPath: /var/lib/kubelet/device-plugins
