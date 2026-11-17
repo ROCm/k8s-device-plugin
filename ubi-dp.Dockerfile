@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-ARG GO_VERSION=1.27.2
+ARG GO_VERSION=1.27.3
 
 # KUBE-38: the toolchain is integrity-checked on pull, since Docker verifies
 # every layer against its digest in the image manifest.
@@ -49,6 +49,7 @@ LABEL \
     summary="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads." \
     description="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads. With the appropriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU."
 RUN mkdir -p /licenses && \
+    dnf upgrade -y && \
     dnf install -y ca-certificates libdrm && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
     dnf install -y 'dnf-command(config-manager)' && \

@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-ARG GO_VERSION=1.27.2
+ARG GO_VERSION=1.27.3
 
 # KUBE-38: the toolchain is integrity-checked on pull, since Docker verifies
 # every layer against its digest in the image manifest.
@@ -47,6 +47,7 @@ LABEL \
     summary="The AMD Node Labeller automatically detects and labels Kubernetes nodes with AMD GPU hardware." \
     description="The AMD Node Labeller automatically detects and labels Kubernetes nodes with AMD GPU hardware. This tool automatically labels nodes with GPU properties if a node has one or more AMD GPU installed."
 RUN mkdir -p /licenses && \
+    microdnf upgrade -y && \
     microdnf install -y ca-certificates libdrm && \
     microdnf clean all
 ADD ./LICENSE /licenses/LICENSE

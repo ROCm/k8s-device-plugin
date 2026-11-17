@@ -1,12 +1,12 @@
 module github.com/ROCm/k8s-device-plugin
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/go-logr/logr v1.4.3
 	github.com/golang/glog v1.2.5
 	github.com/kubevirt/device-plugin-manager v1.19.5
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 	k8s.io/api v0.31.0
