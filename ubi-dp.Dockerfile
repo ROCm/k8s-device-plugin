@@ -49,6 +49,7 @@ LABEL \
     summary="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads." \
     description="The AMD K8s Device Plugin enables the registration of AMD GPUs in your Kubernetes cluster for compute workloads. With the appropriate hardware and this plugin deployed in your Kubernetes cluster, you will be able to run jobs that require AMD GPU."
 RUN mkdir -p /licenses && \
+    dnf upgrade -y && \
     dnf install -y ca-certificates libdrm && \
     rpm --import https://www.centos.org/keys/RPM-GPG-KEY-CentOS-Official && \
     dnf install -y 'dnf-command(config-manager)' && \

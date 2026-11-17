@@ -47,6 +47,7 @@ LABEL \
     summary="The AMD Node Labeller automatically detects and labels Kubernetes nodes with AMD GPU hardware." \
     description="The AMD Node Labeller automatically detects and labels Kubernetes nodes with AMD GPU hardware. This tool automatically labels nodes with GPU properties if a node has one or more AMD GPU installed."
 RUN mkdir -p /licenses && \
+    microdnf upgrade -y && \
     microdnf install -y ca-certificates libdrm && \
     microdnf clean all
 ADD ./LICENSE /licenses/LICENSE
