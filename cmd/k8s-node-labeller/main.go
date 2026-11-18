@@ -168,6 +168,10 @@ var labelGenerators = map[string]func(map[string]map[string]interface{}) map[str
 			break
 		}
 
+		if version == "" {
+			return map[string]string{}
+		}
+
 		pfx := createLabelPrefix("driver-version", false)
 		return map[string]string{pfx: version}
 	},
@@ -182,6 +186,10 @@ var labelGenerators = map[string]func(map[string]map[string]interface{}) map[str
 			}
 			version = strings.TrimSpace(string(b))
 			break
+		}
+
+		if version == "" {
+			return map[string]string{}
 		}
 
 		pfx := createLabelPrefix("driver-src-version", false)
