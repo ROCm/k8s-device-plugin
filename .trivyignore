@@ -30,7 +30,7 @@
 AVD-KSV-0014
 
 # hostIPC is required for shared-memory transport between ROCm processes.
-# docs/user-guide/configuration.md, "Non-Privileged GPU Access", documents it
+# docs/user-guide/configuration.md, "Non-privileged GPU access", documents it
 # as part of a configuration that testing with AMD ROCm containers found to
 # give reliable non-privileged GPU access.
 AVD-KSV-0008
