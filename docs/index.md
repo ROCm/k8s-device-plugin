@@ -19,7 +19,7 @@ See the [ROCm system requirements](https://rocm.docs.amd.com/projects/install-on
 
 ## Quick start
 
-To deploy the device plugin, run it on all nodes equipped with AMD GPUs. The simplest way to do this is by creating a Kubernetes [DaemonSet](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/). A pre-built Docker image is available on [DockerHub](https://hub.docker.com/r/rocm/k8s-device-plugin), and a predefined YAML file named [k8s-ds-amdgpu-dp.yaml](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml) is included in this repository.
+To deploy the device plugin, run it on all nodes equipped with AMD GPUs. To do this, create a Kubernetes [DaemonSet](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/). A pre-built Docker image is available on [Docker Hub](https://hub.docker.com/r/rocm/k8s-device-plugin), and a predefined YAML file named [k8s-ds-amdgpu-dp.yaml](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml) is included in this repository.
 
 Create a DaemonSet in your Kubernetes cluster with the following command:
 
@@ -57,7 +57,7 @@ k8s-node-01      8
 
 ## Example workload
 
-You can restrict workloads to a node with a GPU by adding `resources.limits` to the pod definition. An example pod definition is provided in [example/pod/pytorch.yaml](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/example/pod/pytorch.yaml). Create the pod by running:
+To schedule a workload on a node with a GPU, add `resources.limits` to the pod definition. An example pod definition is provided in [example/pod/pytorch.yaml](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/example/pod/pytorch.yaml). Create the pod by running:
 
 ```bash
 kubectl create -f https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/example/pod/pytorch.yaml
@@ -69,7 +69,7 @@ Check the pod status with:
 kubectl describe pods
 ```
 
-After the pod is running, view the benchmark results with:
+After the pod completes, view its output with:
 
 ```bash
 kubectl logs pytorch-gpu-pod-example

@@ -41,7 +41,6 @@ spec:
       print(f'Parallel computation complete across {n_devices} devices')
       print('Result shape:', result.shape)
       print('Device mapping:', jax.devices())
-      "
     resources:
       limits:
         amd.com/gpu: 2  # Request 2 AMD GPUs

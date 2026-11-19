@@ -104,21 +104,21 @@ The repository contains example deployment configurations for different use case
 
 A minimal deployment that exposes AMD GPUs to Kubernetes:
 
-- Includes only the essential volume mounts
-- Uses minimal security context settings
-- Suitable for basic GPU workloads
+- Mounts only `/var/lib/kubelet/device-plugins` and `/sys`
+- Runs as a privileged container
+- Suits workloads that don't need health checks
 
-[Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml)
+[Download k8s-ds-amdgpu-dp.yaml](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp.yaml)
 
 ### Enhanced device plugin (k8s-ds-amdgpu-dp-health.yaml)
 
-A more comprehensive deployment of the device plugin that includes additional volume mounts and privileged access for advanced features. This configuration includes:
+Adds health checks to the basic deployment. It also includes:
 
-- Additional volume mounts for `kfd` and `dri` devices
-- A dedicated mount for metrics data
-- Privileged execution context for direct hardware access
+- Mounts for `/dev/kfd` and `/dev/dri`
+- A mount for the Device Metrics Exporter socket directory, `/var/lib/amd-metrics-exporter`
+- Health check polling every 10 seconds (`-pulse=10`)
 
-[Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp-health.yaml)
+[Download k8s-ds-amdgpu-dp-health.yaml](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-dp-health.yaml)
 
 ### Node labeler (k8s-ds-amdgpu-labeller.yaml)
 
@@ -135,7 +135,9 @@ The node labeler can expose labels such as:
 - `amd.com/gpu.device-id`: Device ID of the GPU
 - `amd.com/gpu.family`: GPU family/architecture
 - `amd.com/gpu.product-name`: Product name of the GPU
-- And others based on the passed arguments
+- Other labels, depending on the flags passed to the node labeler
+
+The `k8s-ds-amdgpu-labeller.yaml` manifest enables the `vram`, `cu-count`, `simd-count`, `device-id`, `family`, and `product-name` labels.
 
 To expose GPU partition labels, pass these flags when you start the node labeler:
 
@@ -149,7 +151,7 @@ These labels can have the following values:
 - `amd.com/memory-partitioning-supported`: ["true", "false"]
 - `amd.com/compute-memory-partition`: `["spx_nps1", "cpx_nps1", "cpx_nps4", ...]`
 
-[Download link](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml)
+[Download k8s-ds-amdgpu-labeller.yaml](https://raw.githubusercontent.com/ROCm/k8s-device-plugin/master/k8s-ds-amdgpu-labeller.yaml)
 
 ## Resource naming strategy
 
@@ -314,4 +316,5 @@ spec:
 - `privileged: false`: Ensures the container doesn't run with full host privileges
 - `allowPrivilegeEscalation: false`: Prevents the process from gaining additional privileges
 - `seccompProfile.type: Unconfined`: Allows necessary system calls for GPU operations
+- `hostIPC: true`: Required for shared-memory transport between ROCm processes
 - `runAsNonRoot: false`: ROCm framework images run as root. Setting it explicitly records that as a reviewed choice rather than an inherited default
