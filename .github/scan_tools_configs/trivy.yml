@@ -18,8 +18,8 @@
 #      Reference: https://trivy.dev/latest/docs/configuration/filtering/#trivyignore
 #      Keep it beside this file (`.github/scan_tools_configs/.trivyignore`)
 #      or at the repository root. The file beside this config takes
-#      precedence; the two are never merged. The `.trivyignore` here is
-#      a commented placeholder.
+#      precedence; the two are never merged. The `.trivyignore` here holds
+#      this repository's suppressions.
 #
 #   2. `scan.skip-dirs` / `scan.skip-files` below -- paths trivy never
 #      reads, for vendored trees and generated output. Anything found only
