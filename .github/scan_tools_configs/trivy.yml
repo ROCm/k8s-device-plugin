@@ -3,7 +3,11 @@
 #
 # trivy configuration
 # Reference: https://trivy.dev/latest/docs/references/configuration/config-file/
-# Local scan: trivy fs --config .github/scan_tools_configs/trivy.yml .
+# Local scan, with the scanners and ignore file the shared workflow passes
+# (trivy does not look for an ignore file beside --config):
+#   trivy fs --scanners misconfig,vuln,license \
+#     --config .github/scan_tools_configs/trivy.yml \
+#     --ignorefile .github/scan_tools_configs/.trivyignore .
 #
 # Trivy configuration for this repository's security scans.
 #
