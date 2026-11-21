@@ -22,4 +22,4 @@ The allocator follows these rules for requests for X GPU partitions:
 
 - The allocator tries to allocate all partitions from the same GPU if possible.
 - In case there is a GPU with fewer available partitions that can accommodate the request, that GPU is preferred. This maximizes the utilization of GPUs already in use for other workloads and helps avoid fragmentation of unused GPUs.
-- If more than one GPU is needed to accommodate the request, the allocator considers the topology (link type and NUMA affinity) as described above and generate all possible subsets. The subset with the lowest weight among the possible candidates is allocated.
+- If more than one GPU is needed to accommodate the request, the allocator considers the topology (link type and NUMA affinity) as described above and generates all possible subsets. The subset with the lowest weight among the possible candidates is allocated.

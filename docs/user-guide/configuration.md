@@ -199,7 +199,7 @@ amd.com/cpx_nps1: 24
 
 ### Product
 
-In `product` mode, the device plugin reports each GPU under a name which matches their GPU product, and
+In `product` mode, the device plugin reports each GPU under a name which matches its GPU product, and
 the partition style where the GPU is partitioned. This mode is supported for both homogeneous nodes
 and heterogeneous nodes. It is for clusters whose nodes hold more than one GPU product, where
 `amd.com/gpu` cannot express which product a workload received, so per-product quota and scheduling are
