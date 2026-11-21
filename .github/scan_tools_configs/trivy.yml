@@ -3,7 +3,11 @@
 #
 # trivy configuration
 # Reference: https://trivy.dev/latest/docs/references/configuration/config-file/
-# Local scan: trivy fs --config .github/scan_tools_configs/trivy.yml .
+# Local scan, with the scanners and ignore file the shared workflow passes
+# (trivy does not look for an ignore file beside --config):
+#   trivy fs --scanners misconfig,vuln,license \
+#     --config .github/scan_tools_configs/trivy.yml \
+#     --ignorefile .github/scan_tools_configs/.trivyignore .
 #
 # Trivy configuration for this repository's security scans.
 #
@@ -18,8 +22,8 @@
 #      Reference: https://trivy.dev/latest/docs/configuration/filtering/#trivyignore
 #      Keep it beside this file (`.github/scan_tools_configs/.trivyignore`)
 #      or at the repository root. The file beside this config takes
-#      precedence; the two are never merged. The `.trivyignore` here is
-#      a commented placeholder.
+#      precedence; the two are never merged. The `.trivyignore` here holds
+#      this repository's suppressions.
 #
 #   2. `scan.skip-dirs` / `scan.skip-files` below -- paths trivy never
 #      reads, for vendored trees and generated output. Anything found only

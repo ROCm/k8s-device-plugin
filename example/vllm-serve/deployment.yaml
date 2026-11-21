@@ -28,7 +28,7 @@ spec:
       # Serves the model endpoint on the node address.
       hostNetwork: true
       # Required for shared-memory transport between ROCm processes. See
-      # docs/user-guide/configuration.md, "Non-Privileged GPU Access".
+      # docs/user-guide/configuration.md, "Non-privileged GPU access".
       hostIPC: true
       containers:
       - name: mistral-7b
