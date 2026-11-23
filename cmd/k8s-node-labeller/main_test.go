@@ -123,3 +123,22 @@ func TestRemoveOldNodeLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestDriverVersionLabelsWithoutVersion(t *testing.T) {
+	// card 9999 has no sysfs entry, so every version read fails
+	unreadable := map[string]map[string]interface{}{
+		"0000:c1:00.0": {"card": 9999},
+	}
+	inputs := map[string]map[string]map[string]interface{}{
+		"no GPUs":          {},
+		"unreadable cards": unreadable,
+	}
+
+	for _, name := range []string{"driver-version", "driver-src-version"} {
+		for desc, gpus := range inputs {
+			if labels := labelGenerators[name](gpus); len(labels) != 0 {
+				t.Errorf("%s with %s: expected no labels, got %+v", name, desc, labels)
+			}
+		}
+	}
+}
