@@ -1,0 +1,91 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+#
+# Reference: https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml
+#
+# Each entry suppresses one check on the listed files only. Every other check
+# stays live on those files, and the listed check stays live on every other
+# file, so a new manifest that needs one of these settings must be added here
+# explicitly. Paths are relative to the repository root.
+#
+# The shared workflow reads this file because it sits beside trivy.yml, and it
+# takes precedence over a `.trivyignore`. For a local scan, pass it with
+# --ignorefile (see the command in trivy.yml). Add `expired_at: YYYY-MM-DD` to
+# an entry for a temporary suppression.
+
+misconfigurations:
+  # Writable root filesystem. The ROCm framework images in the examples write
+  # JIT and kernel caches (MIOpen, Keras, Triton) to it, and the device plugin
+  # and node labeler write the device-plugin socket under /var/lib/kubelet.
+  # A read-only root filesystem would need a writable emptyDir per cache path,
+  # a set that differs per framework and per image tag, and that no CI here
+  # can validate on GPU hardware.
+  - id: KSV-0014
+    paths:
+      - "example/pod/jax-multi-gpu.yaml"
+      - "example/pod/jax-non-privileged.yaml"
+      - "example/pod/pytorch-non-privileged.yaml"
+      - "example/pod/pytorch.yaml"
+      - "example/pod/tensorflow-gpu.yaml"
+      - "example/vllm-serve/deployment.yaml"
+      - "k8s-ds-amdgpu-dp.yaml"
+      - "k8s-ds-amdgpu-dp-health.yaml"
+      - "k8s-ds-amdgpu-dp-with-init-container.yaml"
+      - "k8s-ds-amdgpu-labeller.yaml"
+      - "k8s-ds-amdgpu-labeller-with-init-container.yaml"
+    statement: ROCm images and the plugin write caches and the kubelet socket to the root filesystem.
+
+  # Host IPC namespace. ROCm processes use shared memory to communicate.
+  # docs/user-guide/configuration.md, "Non-privileged GPU access", documents
+  # hostIPC as part of the tested non-privileged configuration.
+  - id: KSV-0008
+    paths:
+      - "example/pod/jax-non-privileged.yaml"
+      - "example/pod/pytorch-non-privileged.yaml"
+      - "example/vllm-serve/deployment.yaml"
+    statement: Shared-memory transport between ROCm processes needs hostIPC.
+
+  # Host network. The vLLM serving example exposes the model endpoint on the
+  # node address, which example/vllm-serve/README.md walks through.
+  - id: KSV-0009
+    paths:
+      - "example/vllm-serve/deployment.yaml"
+    statement: The vLLM example serves the model endpoint on the node address.
+
+  # The device plugin and node labeler are privileged by construction: they
+  # enumerate GPUs through /sys and /dev/kfd and register over the kubelet's
+  # device-plugin socket. Privileged mode (KSV-0017) and hostPath volumes
+  # (KSV-0121) have no fix that leaves them working. KSV-0118 asks for a
+  # pod-level security context, but these DaemonSets set what they need at
+  # container level.
+  - id: KSV-0017
+    paths:
+      - "k8s-ds-amdgpu-dp.yaml"
+      - "k8s-ds-amdgpu-dp-health.yaml"
+      - "k8s-ds-amdgpu-dp-with-init-container.yaml"
+      - "k8s-ds-amdgpu-labeller.yaml"
+      - "k8s-ds-amdgpu-labeller-with-init-container.yaml"
+    statement: The device plugin and node labeler need privileged access to the GPUs.
+  - id: KSV-0121
+    paths:
+      - "k8s-ds-amdgpu-dp.yaml"
+      - "k8s-ds-amdgpu-dp-health.yaml"
+      - "k8s-ds-amdgpu-dp-with-init-container.yaml"
+      - "k8s-ds-amdgpu-labeller.yaml"
+      - "k8s-ds-amdgpu-labeller-with-init-container.yaml"
+    statement: The DaemonSets mount /sys, /dev and the kubelet device-plugin directory.
+  - id: KSV-0118
+    paths:
+      - "k8s-ds-amdgpu-dp.yaml"
+      - "k8s-ds-amdgpu-dp-health.yaml"
+      - "k8s-ds-amdgpu-dp-with-init-container.yaml"
+      - "k8s-ds-amdgpu-labeller.yaml"
+      - "k8s-ds-amdgpu-labeller-with-init-container.yaml"
+    statement: The DaemonSets set their security context at container level.
+
+  # SYS_ADMIN capability. Only the health-check DaemonSet adds it, as part of
+  # the same privileged device plugin setup as the checks above.
+  - id: KSV-0005
+    paths:
+      - "k8s-ds-amdgpu-dp-health.yaml"
+    statement: The health-check device plugin DaemonSet adds the SYS_ADMIN capability.

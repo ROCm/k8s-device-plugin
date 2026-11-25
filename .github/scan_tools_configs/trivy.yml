@@ -3,27 +3,29 @@
 #
 # trivy configuration
 # Reference: https://trivy.dev/latest/docs/references/configuration/config-file/
-# Local scan: trivy fs --config .github/scan_tools_configs/trivy.yml .
+# Local scan, with the scanners and ignore file the shared workflow passes
+# (trivy does not look for an ignore file beside --config):
+#   trivy fs --scanners misconfig,vuln,license \
+#     --config .github/scan_tools_configs/trivy.yml \
+#     --ignorefile .github/scan_tools_configs/.trivyignore.yaml .
 #
 # Trivy configuration for this repository's security scans.
 #
-# This file defines the complete scanner policy;
+# This file defines the complete scanner policy.
 # Keep repository-specific suppressions and tuning here.
 #
 # Ways to suppress a finding, narrowest first:
 #
-#   1. `.trivyignore` -- one vulnerability, misconfiguration or secret rule
-#      ID per line. Add `exp:YYYY-MM-DD` for a temporary suppression:
-#          CVE-2019-14697 exp:2027-01-01
-#      Reference: https://trivy.dev/latest/docs/configuration/filtering/#trivyignore
-#      Keep it beside this file (`.github/scan_tools_configs/.trivyignore`)
-#      or at the repository root. The file beside this config takes
-#      precedence; the two are never merged. The `.trivyignore` here is
-#      a commented placeholder.
+#   1. `.trivyignore.yaml` -- one check ID with the files it applies to, and a
+#      statement that records why. Every other file keeps the check.
+#      Reference: https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml
+#      Keep it beside this file (`.github/scan_tools_configs/.trivyignore.yaml`).
+#      The shared workflow prefers it over a `.trivyignore`, and the two are
+#      never merged. The file here holds this repository's suppressions.
 #
-#   2. `scan.skip-dirs` / `scan.skip-files` below -- paths trivy never
-#      reads, for vendored trees and generated output. Anything found only
-#      there is not scanned at all, so keep entries narrow.
+#   2. `scan.skip-dirs` below -- paths trivy never reads, for vendored trees
+#      and generated output. Nothing in them is scanned at all, so keep
+#      entries narrow and never use them to silence a finding.
 
 # Environment and generated-output exclusions support local scans; these
 # paths are absent from clean CI checkouts.
@@ -42,24 +44,3 @@ scan:
     - node_modules
     - __pycache__
     - vendor
-
-  # Only the DaemonSets. The example manifests are scanned normally -- the
-  # three checks that fire on them are intrinsic to every GPU workload, so
-  # they live in .trivyignore, which leaves every other check live on those
-  # files. KSV-0118 in particular stays live there, which is what keeps the
-  # explicit security contexts in example/pod/*.yaml from regressing.
-  skip-files:
-    # A device plugin is privileged by construction: it enumerates GPUs
-    # through /sys and /dev/kfd, and registers over the kubelet's
-    # device-plugin socket. KSV-0005 (SYS_ADMIN), KSV-0017 (privileged) and
-    # KSV-0121 (hostPath) have no fix that leaves a working plugin, and
-    # KSV-0118 wants a pod-level context that would add nothing a reader
-    # could act on -- these set what they need at container level.
-    #
-    # Those four are deliberately NOT in .trivyignore: each is worth catching
-    # if it ever appears in an example manifest or a new DaemonSet.
-    - k8s-ds-amdgpu-dp.yaml
-    - k8s-ds-amdgpu-dp-health.yaml
-    - k8s-ds-amdgpu-dp-with-init-container.yaml
-    - k8s-ds-amdgpu-labeller.yaml
-    - k8s-ds-amdgpu-labeller-with-init-container.yaml
